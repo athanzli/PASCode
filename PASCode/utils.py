@@ -113,7 +113,6 @@ def plot_pac(x, y, is_pac, title='', fdr_thres=.01):
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.show()
 
-
 def cluster_test(info, clustering_name, sampleid_name, 
                  phenotype_name, pos_phenotype_name): # TODO why does it result in different sc level plot results from the R version?
     r"""
