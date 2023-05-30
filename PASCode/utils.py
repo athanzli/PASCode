@@ -1,7 +1,4 @@
-# %reload_ext autoreload 
-# %autoreload 2
-
-from sklearn.metrics import accuracy_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from multianndata import MultiAnnData
 import umap
 import pandas as pd
@@ -22,10 +19,12 @@ from rpy2.robjects.packages import importr
 import cna
 import os
 
-relative_path = "./PASCode"
-absolute_path = os.path.abspath(relative_path)
-os.chdir(absolute_path)
-from scACC import scACC
+from .scACC.model import scACC
+
+# relative_path = "./"
+# absolute_path = os.path.abspath(relative_path)
+# os.chdir(absolute_path)
+# from scACC import *
 
 np.random.seed(0)
 random.seed(0)
@@ -95,18 +94,25 @@ def plot_cell_score(x, y, scores, title, continuous=True): # for continuous
         ax.set_yticks([])
         plt.show()
 
-def plot_pac(x, y, is_pac, title='', fdr_thres=.01):
+def plot_pac(x, y, pac, title='', fdr_thres=.05):
     r"""
     Args:
-        x ([type]): [description]
-        y ([type]): [description]
-        is_pac ([list, (1d)numpy.ndarray]): [indicate if cell is pac]
+        x ([type]): [description].
+        y ([type]): [description].
+        pac ([list, (1d)numpy.ndarray]): [...].
         method_name (str, optional): [description]. Defaults to ''.
         fdr_thres (float, optional): [description]. Defaults to .01.
     """
-    legend_map = {0: 'Non-PAC', 1: 'PAC'}
-    plt.figure(figsize=(10,10))
-    ax = sns.scatterplot(x=x, y=y, hue=is_pac, s=0.8, palette=['grey', 'red'])
+    # plt.figure(figsize=(10,10))
+    # ax = sns.scatterplot(x=x, y=y, hue=is_pac, s=0.8, palette=['grey', 'red'])
+    # ax.set_title(title)
+    # ax.set_xticks([])
+    # ax.set_yticks([])
+    # ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    # plt.show()
+
+    plt.figure(figsize=(6,6))
+    ax = sns.scatterplot(x=x, y=y, hue=pac, s=3, palette=['blue', 'grey', 'red'])
     ax.set_title(title)
     ax.set_xticks([])
     ax.set_yticks([])
@@ -138,11 +144,11 @@ def cluster_to_cell(cluster_test_res, clustering):
     r"""
     Args:
         cluster_test_res ([numpy.ndarrays]): [cluster test results 
-            (e.g., logFC, or FDR), must be one-dimensional]
+            (e.g., logFC, or FDR), must be one-dimensional].
         clustering ([pandas.DataFrame]): [clustering results, constructed from
-            pd.dummies() or the neighborhood matrix of the method itself]
+            pd.dummies() or the neighborhood matrix of the method itself].
     Returns:
-        [numpy.ndarray]: [cell-level test results, one-dimensional]
+        [numpy.ndarray]: [cell-level test results, one-dimensional].
     """
     test_res_sum = clustering@cluster_test_res
     count_nonzero = np.count_nonzero(clustering, axis=1)
@@ -152,7 +158,6 @@ def cluster_to_cell(cluster_test_res, clustering):
 
 def run_scacc(X, 
               meta, 
-              return_pac=False,
               sampleid_name=None, 
               phenotype_name=None, # phenotype_name is the column name of phenotype in meta
               pos_phenotype_name=None,
@@ -161,7 +166,7 @@ def run_scacc(X,
               n_clusters=30, 
               lambda_cluster=1, 
               lambda_phenotype=1, 
-              device='cuda',
+              device='cpu',
               epoch_pretrain=15,
               epoch_train=15,
               batch_size=1024,
@@ -182,7 +187,7 @@ def run_scacc(X,
 
     Returns:
         scacc ([scACC]): [scACC model]
-        pac_scacc ([numpy.ndarray]): [PAC results, 1-dimensional]
+        pac_scacc ([numpy.ndarray]): [boolean 1d array, indicating PACs]
     """
 
     scacc = scACC(device=device, 
@@ -200,16 +205,18 @@ def run_scacc(X,
                 epoch_train=epoch_train,
                 lr_pretrain=lr_pretrain, 
                 lr_train=lr_train,)
-    clustering = scacc.get_cluster_assignments(X)
-    meta['scacc'] = clustering
-    cluster_test_res = cluster_test(info=meta, 
-                                    clustering_name='scacc',
-                                    sampleid_name=sampleid_name,
-                                    phenotype_name=phenotype_name,
-                                    pos_phenotype_name=pos_phenotype_name)
-    cell_fdr = cluster_to_cell(cluster_test_res['FDR'].values, pd.get_dummies(clustering))
-    pac_scacc = meta[cell_fdr < fdr_thres].index.values
-    return scacc, pac_scacc
+    # clustering = scacc.get_cluster_assignments(X)
+    # meta['scacc'] = clustering
+    # cluster_test_res = cluster_test(info=meta, 
+    #                                 clustering_name='scacc',
+    #                                 sampleid_name=sampleid_name,
+    #                                 phenotype_name=phenotype_name,
+    #                                 pos_phenotype_name=pos_phenotype_name)
+    # cell_fdr = cluster_to_cell(cluster_test_res['FDR'].values, pd.get_dummies(clustering))
+    # cell_logfc = cluster_to_cell(cluster_test_res['logFC'].values, pd.get_dummies(clustering))
+    # pac_scacc_pos = (cell_fdr < fdr_thres) & (cell_logfc < 0)
+    # pac_scacc_neg = (cell_fdr < fdr_thres) & (cell_logfc > 0)
+    return scacc
 
 def run_cna(adata, return_pac=False, 
             sampleid_name=None, phenotype_name=None, 
@@ -246,8 +253,8 @@ def run_cna(adata, return_pac=False,
     res.FDR = fdr_res
     return res[res.FDR < fdr_thres].index.values
 
-def run_milo(adata, return_pac=False, sampleid_name=None, phenotype_name=None, 
-             fdr_thres=0.01, n_neighbors=50, n_pcs=50, visualize=False):
+def run_milo(adata, return_pac_pos_neg=False, sampleid_name=None, phenotype_name=None, 
+             fdr_thres=0.05, n_neighbors=50, n_pcs=50, make_nhoods_prop=0.1, visualize=False):
     r"""
     Args:
         adata ([anndata.AnnData]): [AnnData object]
@@ -256,13 +263,16 @@ def run_milo(adata, return_pac=False, sampleid_name=None, phenotype_name=None,
         n_neighbors ([int]): [number of neighbors in sc.pp.neighbors]
         n_pcs ([int]): [number of PCs in sc.pp.neighbors]
     Returns:
-        [numpy.ndarray]: [PAC names]
+        [numpy.ndarray]: [boolean 1d array indicating PACs]
     """
+
     if 'X_pca' not in adata.obsm.keys():
+        print('Running PCA...')
         sc.pp.pca(adata) # NOTE
     if 'connectivities' not in adata.obsp.keys():
+        print('Building knn graph...')
         sc.pp.neighbors(adata, n_neighbors=n_neighbors, n_pcs=n_pcs, use_rep='X_pca') # NOTE
-    milo.make_nhoods(adata) # NOTE 
+    milo.make_nhoods(adata, prop=make_nhoods_prop) # NOTE 
     milo.count_nhoods(adata, sample_col=sampleid_name) # NOTE
     milo.DA_nhoods(adata, design='~'+phenotype_name) # NOTE
 
@@ -274,12 +284,24 @@ def run_milo(adata, return_pac=False, sampleid_name=None, phenotype_name=None,
         sc.pl.umap(adata, color=[phenotype_name])
     # convert results to single cell level
     milo_res = adata.uns["nhood_adata"].obs
-    if return_pac is False:
-        return milo_res
     clustering = adata.obsm['nhoods'].toarray().astype(int) # nbhd assignment of single cells # Use .toarray() only if adata.obsm["nhoods"] is sparse
-    cell_scores = cluster_to_cell(milo_res.SpatialFDR.values, clustering)
-    milo_pac = adata.obs.index.values[np.logical_and(~np.isnan(cell_scores), cell_scores < fdr_thres)]
-    return milo_pac
+    cell_fdr = cluster_to_cell(milo_res.SpatialFDR.values, clustering)
+    cell_logfc = cluster_to_cell(milo_res.logFC.values, clustering)
+    if return_pac_pos_neg is True:
+        """
+        cell_logfc < or >  0:
+        In the formula notation used in the design matrix, the order of the levels in a factor often determines which group is used as the reference or baseline. In R, which this function seems to be written in, the default behavior is to use the first level as the reference when a factor is used in a formula.
+
+        So, if the factor adata.obs[phenotype_name] has levels phenotype1 and phenotype2, and phenotype1 is the first level, then phenotype1 would be treated as the reference level. In that case:
+
+        A positive logFC value would suggest that the feature is more abundant in phenotype2 compared to phenotype1 (the reference).
+        A negative logFC value would suggest that the feature is less abundant in phenotype2 compared to phenotype1 (the reference).
+        """
+        milo_pac_pos = np.logical_and(~np.isnan(cell_fdr), cell_fdr < fdr_thres) & (cell_logfc < 0)
+        milo_pac_neg = np.logical_and(~np.isnan(cell_fdr), cell_fdr < fdr_thres) & (cell_logfc > 0)
+        return milo_pac_pos, milo_pac_neg
+    milo_pac = np.logical_and(~np.isnan(cell_fdr), cell_fdr < fdr_thres)
+    return milo_pac, 0
 
 def run_leiden(X, meta, sampleid_name, phenotype_name, pos_phenotype_name, # TODO problems?? 
                pca, n_neighbors=50, n_pcs=50, resolution=0.9, visualize=False,
@@ -305,9 +327,52 @@ def run_leiden(X, meta, sampleid_name, phenotype_name, pos_phenotype_name, # TOD
     # from cluster level single cell level
     return cluster_to_cell(test_res.FDR.values, clustering=pd.get_dummies(meta['leiden']))
 
-def evaluate_pac_predicton(pac_true, pac_pred, cell_names):
-    y_pred = np.isin(cell_names, pac_pred)
-    y_true = np.isin(cell_names, pac_true)
-    print('Recall: ', recall_score(y_true, y_pred))
-    print('Accuracy: ', accuracy_score(y_true, y_pred))
-    print('Precision: ', precision_score(y_true, y_pred))
+
+def evaluate_pac_prediction(mode='undirectional',
+                            input_is_index=False, 
+                            pac_true=None, 
+                            pac_pred=None, 
+                            pac_true_pos=None,
+                            pac_true_neg=None,
+                            pac_pred_pos=None,
+                            pac_pred_neg=None,
+                            cell_names=None):
+    all_ind = np.arange(len(cell_names))
+    if mode == 'undirectional':
+        if input_is_index:
+            y_pred = np.isin(all_ind, pac_pred)
+            y_true = np.isin(all_ind, pac_true)
+        else:
+            y_pred = np.isin(cell_names, pac_pred)
+            y_true = np.isin(cell_names, pac_true)
+        r = recall_score(y_true, y_pred)
+        p = precision_score(y_true, y_pred)
+        f = f1_score(y_true, y_pred)
+        print('Recall: ', r)
+        print('Precision: ', p)
+        print('F-1 score: ', f)
+        return r, p, f
+    elif mode == 'directional':
+        if input_is_index:
+            y_pred_pos = np.isin(all_ind, pac_pred_pos)
+            y_true_pos = np.isin(all_ind, pac_true_pos)
+            y_pred_neg = np.isin(all_ind, pac_pred_neg)
+            y_true_neg = np.isin(all_ind, pac_true_neg)
+        else:
+            y_pred_pos = np.isin(cell_names, pac_pred_pos)
+            y_true_pos = np.isin(cell_names, pac_true_pos)
+            y_pred_neg = np.isin(cell_names, pac_pred_neg)
+            y_true_neg = np.isin(cell_names, pac_true_neg)
+        r_pos = recall_score(y_true_pos, y_pred_pos)
+        p_pos = precision_score(y_true_pos, y_pred_pos)
+        f_pos = f1_score(y_true_pos, y_pred_pos)
+        r_neg = recall_score(y_true_neg, y_pred_neg)
+        p_neg = precision_score(y_true_neg, y_pred_neg)
+        f_neg = f1_score(y_true_neg, y_pred_neg)
+        print('Recall pos: ', r_pos)
+        print('Precision pos: ', p_pos)
+        print('F-1 score pos: ', f_pos)
+        print('Recall neg: ', r_neg)
+        print('Precision neg: ', p_neg)
+        print('F-1 score neg: ', f_neg)
+        return r_pos, p_pos, f_pos, r_neg, p_neg, f_neg

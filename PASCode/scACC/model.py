@@ -1,5 +1,3 @@
-from .utils import *
-
 import sys
 import gc
 import torch
@@ -22,6 +20,12 @@ import umap
 import seaborn
 from torch import nn
 import torch.nn.functional as F
+
+import os
+
+# os.chdir('/home/che82/athan/pascode/github/PASCode/scACC/')
+
+from .utils import *
 
 ###############################################################################
 ################################ The scACC Model  ###########################
@@ -58,26 +62,27 @@ class scACC():
         self.alpha = alpha
         self.device = torch.device(device)
 
-    def __call__(self, x):
-        r"""
-        Returns:
-            x_bar: reconstructed 
-            q: clustering Q matrix 
-            z: embedding
-        """
-        x = torch.tensor(x).float().to(self.device)
-        z, x_bar = self.ae(x)
-        q = calc_q(z, self.clusters, self.alpha)
-        return x_bar, q, z
+    # def __call__(self, x):
+    #     r"""
+    #     Returns:
+    #         x_bar: reconstructed 
+    #         q: clustering Q matrix 
+    #         z: embedding
+    #     """
+    #     x = torch.tensor(x).float().to(self.device)
+    #     z, x_bar = self.ae(x)
+    #     q = calc_q(z, self.clusters, self.alpha)
+    #     return x_bar, q, z
 
     class _AE(nn.Module):
         r"""
         Autoencoder module of scACC.
         """
-        def __init__(self, latent_dim, input_dim=None, dropout=.2):
+        def __init__(self, latent_dim, input_dim=None, dropout=.2, device='cpu'):
             super().__init__()
             self.dropout = dropout
             self.input_dim = input_dim
+            self.device = device
             self.encoder = nn.Sequential(
                 nn.Linear(input_dim, 1024),
                 nn.ReLU(),
@@ -100,9 +105,10 @@ class scACC():
             )
 
         def forward(self, x):
+            x = torch.tensor(x).float().to(self.device)
             z = self.encoder(x)
             x_bar = self.decoder(z)
-            return z, x_bar
+            return x_bar
        
 
     def init_ae(self, X_train):
@@ -113,7 +119,8 @@ class scACC():
         self.ae = self._AE(
             input_dim=X_train.shape[1],
             latent_dim=self.latent_dim,
-            dropout=self.dropout).to(self.device)
+            dropout=self.dropout,
+            device=self.device).to(self.device)
 
     def train(self,
             X_train, 
@@ -179,7 +186,6 @@ class scACC():
         Pretraining phase.
         Train the AE module in scACC and initialize cluster self.. 
         """
-        X_train = X_train.to(self.device)
 
         self.init_ae(X_train)
 
@@ -198,7 +204,8 @@ class scACC():
             total_loss = 0
             for x in train_loader:
                 x = x.to(self.device)
-                z, x_bar  = self.ae(x)
+                x_bar  = self.ae(x)
+                z = self.ae.encoder(x)
                 optimizer.zero_grad()
                 loss = F.mse_loss(x_bar, x)
                 loss.backward()
@@ -210,7 +217,7 @@ class scACC():
         self.clusters = torch.nn.Parameter(torch.Tensor(self.n_clusters, self.latent_dim))
         torch.nn.init.kaiming_normal_(self.clusters.data) # NOTE
         with torch.no_grad():
-            z, x_bar = self.ae(X_train)
+            z = self.ae.encoder(X_train)
         km = sklearn.cluster.KMeans(n_clusters=self.n_clusters, n_init=20)
         km.fit_predict(z.data.cpu().numpy())
         self.clusters.data = torch.tensor(km.cluster_centers_).to(self.device)
@@ -250,7 +257,8 @@ class scACC():
         optimizer = torch.optim.Adam(self.ae.parameters(), lr=lr)
         for epoch in range(epoch_train):
             with torch.no_grad():
-                _, q, _ = self(X_train)
+                z = self.ae.encoder(X_train)
+            q = calc_q(z, self.clusters.data, self.alpha)
             p = target_distribution(q.data)
             self.P = p # for evaluation
             # minibatch gradient descent to train AE
@@ -258,7 +266,9 @@ class scACC():
             for x, y, idx in train_loader:
                 x = x.to(self.device)
                 # x2 = add_noise(x)  # for denoising AE
-                x_bar, q, _ = self(x)
+                x_bar = self.ae(x)
+                z = self.ae.encoder(x)
+                q = calc_q(z, self.clusters.data, self.alpha)
                 rec_loss = F.mse_loss(x_bar, x) # AE reconstruction loss
                 kl_loss = F.kl_div(q.log(), p[idx]) # KL-div loss # NOTE do not use reduction='batchmean', it will significantly lower performance (why?)
                 # phenotype entropy loss
@@ -288,7 +298,8 @@ class scACC():
         Returns:
             latent space as a numpy array
         """
-        _, _, z = self(x)
+        x = torch.tensor(x, dtype=torch.float32).to(self.device)
+        z = self.ae.encoder(x)
         return z.detach().cpu().numpy()
 
     def plot_latent_space(self, X, label=None, reducer=None, 
@@ -334,17 +345,18 @@ class scACC():
         """
         return self.clusters.data
 
-    def get_cluster_assignments(self, X):        
+    def get_cluster_assignments(self, x):        
         r"""
         A helper function to get point assignments to clusters
         """
-        with torch.no_grad():
-            _, q, __ = self(X)
+        x = torch.tensor(x, dtype=torch.float32).to(self.device)
+        z = self.ae.encoder(x)
+        q = calc_q(z, self.clusters, self.alpha)
         return assign_cluster(q).detach().cpu().numpy()
     
-    def get_sample_cluster_fraction_matrix(self, X, sample_ids):
+    def get_cluster_abundance_matrix(self, X, sample_ids):
         r"""
-        Get sample cluster fraction matrix.
+        Get sample cluster abundance matrix.
         
         Args:
             X: gene expression. rows are cells, columns are genes
@@ -353,31 +365,23 @@ class scACC():
         Returns:
             the sample cluster fraction matrix
         """
-        X = torch.tensor(X, dtype=torch.float32).to(self.device)
-        X = torch.tensor(X, dtype=torch.float32) # without this line, X_train will still be torch.float64. why?
-        with torch.no_grad():
-            _, q, __ = self(X) # order preserving: yes.
-        assigns = assign_cluster(q).detach().cpu().numpy() # order preserving?
-
         info = pd.DataFrame({
                 'sample_ids':sample_ids,
-                'cluster':assigns,
+                'cluster':self.get_cluster_assignments(X),
             })
-
-        temp = info.groupby(['sample_ids', 'cluster']).size().unstack()
-        dcf_mat = pd.DataFrame(0, index=temp.index, 
-                                columns=list(range(self.n_clusters)))
-        dcf_mat.loc[:, temp.columns] = temp
-        dcf_mat[np.isnan(dcf_mat)] = 0
-        dcf_mat = dcf_mat.div(dcf_mat.sum(axis=1), axis=0)
-        return dcf_mat
-
+        cam = info.groupby(['sample_ids', 'cluster']).size().unstack()
+        # cam = pd.DataFrame(0, index=temp.index, 
+        #                         columns=list(range(self.n_clusters)))
+        # cam.loc[:, temp.columns] = temp
+        cam[np.isnan(cam)] = 0
+        cam = cam.div(cam.sum(axis=1), axis=0)
+        return cam
 
     def evaluate(self, X_train, y_train, epoch):
         # get sample cluster fraction matrix from traininig data
         X_train = X_train.cpu().numpy()
         y_train = y_train.cpu().numpy()
-        X_new_train = self.get_sample_cluster_fraction_matrix(X_train, self.id_train)
+        X_new_train = self.get_cluster_abundance_matrix(X_train, self.id_train)
         # get sample labels
         info_train = pd.DataFrame({
             'id':self.id_train,
@@ -386,7 +390,7 @@ class scACC():
         y_true_train = info_train.groupby(['id', 'label']).size().index.to_frame()['label'].to_list()
 
         # get sample cluster fraction matrix from testing data
-        X_new_test = self.get_sample_cluster_fraction_matrix(self.X_test, self.id_test)
+        X_new_test = self.get_cluster_abundance_matrix(self.X_test, self.id_test)
         # get sample labels 
         info_test = pd.DataFrame({
             'id':self.id_test,
@@ -411,7 +415,9 @@ class scACC():
         y_train = torch.tensor(y_train).to(self.device)
         self.ae.eval()
         with torch.no_grad():
-            X_bar, q, _ = self(X_train)
+            X_bar = self.ae(X_train)
+            z = self.ae.encoder(X_train)
+            q = calc_q(z, self.clusters, self.alpha)
             rec_loss = F.mse_loss(X_bar, X_train)
             ent_loss = calc_entropy(q, torch.tensor(y_train).to(self.device))
             kl_loss = F.kl_div(q.log(), self.P) # self.P is the target distribution from X_train
@@ -455,3 +461,8 @@ class scACC():
             if self.fold_num != None and epoch == self.epoch_train - 1:
                 plt.draw() # NOTE
                 fig.savefig('train_fold_{}.png'.format(self.fold_num))
+
+
+# NOTES
+# order preserving: 
+#   self.ae.encoder,  TODO? assign_cluster(q)
