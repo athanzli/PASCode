@@ -254,7 +254,7 @@ def run_cna(adata, return_pac=False,
     return res[res.FDR < fdr_thres].index.values
 
 def run_milo(adata, return_pac_pos_neg=False, sampleid_name=None, phenotype_name=None, 
-             fdr_thres=0.05, n_neighbors=50, n_pcs=50, make_nhoods_prop=0.1, visualize=False):
+             fdr_thres=0.05, n_neighbors=15, n_pcs=50, make_nhoods_prop=0.1, visualize=False):
     r"""
     Args:
         adata ([anndata.AnnData]): [AnnData object]

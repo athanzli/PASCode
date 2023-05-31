@@ -17,9 +17,9 @@ class PASCode:
 
     def fit(self, 
             adata, 
-            return_pac_pos_neg=False,
+            require_pac_pos_neg=False,
             fdr_thres=.05, 
-            n_neighbors=50, 
+            n_neighbors=15, 
             n_pcs=50, 
             latent_dim=3, 
             n_clusters=30, 
@@ -35,8 +35,7 @@ class PASCode:
         r"""
         Args:
             adata (AnnData): AnnData object.
-            return_pac_pos_neg (bool): whether to return positive and negative pacs.
-            return_logfc (bool): whether to return logfc.
+            require_pac_pos_neg (bool): whether to return positive and negative pacs.
             fdr_thres (float): fdr threshold.
             n_neighbors (int): number of neighbors.
             n_pcs (int): number of pcs.
@@ -57,7 +56,7 @@ class PASCode:
             numpy.ndarray, numpy.ndarray: anchor pacs positive, anchor pacs negative.
         """
         pac_milo, _ = run_milo(adata, 
-                            return_pac_pos_neg=return_pac_pos_neg,
+                            return_pac_pos_neg=require_pac_pos_neg,
                             sampleid_name=self.sampleid_name, 
                             phenotype_name=self.phenotype_name,
                             fdr_thres=fdr_thres,
@@ -67,22 +66,21 @@ class PASCode:
         self.pac_milo_pos = 0 if type(_) != np.ndarray else pac_milo
         self.pac_milo_neg = 0 if type(_) != np.ndarray else _
         self.scacc = run_scacc(X=adata.X, 
-                                          meta=adata.obs, 
-                                          return_pac=False, 
-                                          sampleid_name=self.sampleid_name, 
-                                          phenotype_name=self.phenotype_name, 
-                                          pos_phenotype_name=self.pos_phenotype_name,
-                                          fdr_thres=fdr_thres,
-                                          latent_dim=latent_dim, 
-                                          n_clusters=n_clusters, 
-                                          lambda_cluster=lambda_cluster, 
-                                          lambda_phenotype=lambda_phenotype, 
-                                          device=device,
-                                          epoch_pretrain=epoch_pretrain,
-                                          epoch_train=epoch_train,
-                                          batch_size=batch_size,
-                                          lr_pretrain=lr_pretrain,
-                                          lr_train=lr_train,)
+                            meta=adata.obs, 
+                            sampleid_name=self.sampleid_name, 
+                            phenotype_name=self.phenotype_name, 
+                            pos_phenotype_name=self.pos_phenotype_name,
+                            fdr_thres=fdr_thres,
+                            latent_dim=latent_dim, 
+                            n_clusters=n_clusters, 
+                            lambda_cluster=lambda_cluster, 
+                            lambda_phenotype=lambda_phenotype, 
+                            device=device,
+                            epoch_pretrain=epoch_pretrain,
+                            epoch_train=epoch_train,
+                            batch_size=batch_size,
+                            lr_pretrain=lr_pretrain,
+                            lr_train=lr_train,)
         z = self.get_latent_space(adata.X)
         self.tree = KDTree(z)
         if type(self.pac_milo_pos) != np.ndarray:
@@ -90,8 +88,8 @@ class PASCode:
             self.anchor_pac = adata.obs.index[self.anchor_pac_bool].values # NOTE: self.anchor_pac are pac names
             self.anchor_pac_ind = np.where(1 == self.anchor_pac_bool)[0]
             return
-        self.anchor_pac_pos_bool = self.pac_milo_pos & 1
-        self.anchor_pac_neg_bool = self.pac_milo_neg & 1
+        self.anchor_pac_pos_bool = (self.pac_milo_pos & 1).astype(bool)
+        self.anchor_pac_neg_bool = (self.pac_milo_neg & 1).astype(bool)
         self.anchor_pac_pos = adata.obs.index[self.anchor_pac_pos_bool].values # NOTE pac names
         self.anchor_pac_neg = adata.obs.index[self.anchor_pac_neg_bool].values # NOTE pac names
         self.anchor_pac_pos_ind = np.where(self.anchor_pac_pos_bool == 1)[0]
