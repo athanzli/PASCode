@@ -94,7 +94,7 @@ def plot_cell_score(x, y, scores, title, continuous=True): # for continuous
         ax.set_yticks([])
         plt.show()
 
-def plot_pac(x, y, pac, title='', fdr_thres=.05):
+def plot_pac(x, y, pac, title=''):
     r"""
     Args:
         x ([type]): [description].
@@ -156,8 +156,8 @@ def cluster_to_cell(cluster_test_res, clustering):
                      if count_nonzero[i]!=0 
                      else np.nan for i in range(len(test_res_sum))])
 
-def run_scacc(X, 
-              meta, 
+def run_scacc(X_train, 
+              meta_train, 
               sampleid_name=None, 
               phenotype_name=None, # phenotype_name is the column name of phenotype in meta
               pos_phenotype_name=None,
@@ -172,6 +172,9 @@ def run_scacc(X,
               batch_size=1024,
               lr_pretrain=1e-3,
               lr_train=1e-3,
+
+              early_stopping=False,
+              meta_test=None,
 
               alpha=1,
               dropout=.2,
@@ -194,17 +197,23 @@ def run_scacc(X,
                   latent_dim=latent_dim, 
                   n_clusters=n_clusters, 
                   lambda_cluster=lambda_cluster, 
-                  lambda_phenotype=lambda_phenotype)
+                  lambda_phenotype=lambda_phenotype,
+                  dropout=dropout)
 
-    neg_phenotype_name = meta[phenotype_name].unique()[~(meta[phenotype_name].unique()==pos_phenotype_name)][0]
-    y_train = meta[phenotype_name].map({pos_phenotype_name: 1, neg_phenotype_name: 0}).values
-    scacc.train(X_train=X, 
+    # neg_phenotype_name = meta_train[phenotype_name].unique()[~(meta_train[phenotype_name].unique()==pos_phenotype_name)][0]
+    y_train = meta_train[phenotype_name].factorize()[0] #.map({pos_phenotype_name: 1, neg_phenotype_name: 0}).values
+    y_test = meta_test[phenotype_name].factorize()[0] #.map({pos_phenotype_name: 1, neg_phenotype_name: 0}).values
+    scacc.train(X_train=X_train, 
                 y_train=y_train,
                 batch_size=batch_size, 
                 epoch_pretrain=epoch_pretrain, 
                 epoch_train=epoch_train,
                 lr_pretrain=lr_pretrain, 
-                lr_train=lr_train,)
+                lr_train=lr_train,
+                early_stopping=False,
+                X_test=X_test,
+                y_test=y_test,)
+    
     # clustering = scacc.get_cluster_assignments(X)
     # meta['scacc'] = clustering
     # cluster_test_res = cluster_test(info=meta, 
@@ -253,7 +262,7 @@ def run_cna(adata, return_pac=False,
     res.FDR = fdr_res
     return res[res.FDR < fdr_thres].index.values
 
-def run_milo(adata, return_pac_pos_neg=False, sampleid_name=None, phenotype_name=None, 
+def run_milo(adata, return_pac_pos_neg=False, return_cell_scores=True, sampleid_name=None, phenotype_name=None, 
              fdr_thres=0.05, n_neighbors=15, n_pcs=50, make_nhoods_prop=0.1, visualize=False):
     r"""
     Args:
@@ -299,9 +308,9 @@ def run_milo(adata, return_pac_pos_neg=False, sampleid_name=None, phenotype_name
         """
         milo_pac_pos = np.logical_and(~np.isnan(cell_fdr), cell_fdr < fdr_thres) & (cell_logfc < 0)
         milo_pac_neg = np.logical_and(~np.isnan(cell_fdr), cell_fdr < fdr_thres) & (cell_logfc > 0)
-        return milo_pac_pos, milo_pac_neg
+        return milo_pac_pos, milo_pac_neg, cell_fdr, cell_logfc
     milo_pac = np.logical_and(~np.isnan(cell_fdr), cell_fdr < fdr_thres)
-    return milo_pac, 0
+    return milo_pac, 0, cell_fdr, cell_logfc
 
 def run_leiden(X, meta, sampleid_name, phenotype_name, pos_phenotype_name, # TODO problems?? 
                pca, n_neighbors=50, n_pcs=50, resolution=0.9, visualize=False,

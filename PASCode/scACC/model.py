@@ -53,7 +53,7 @@ class scACC():
             alpha=1,
             dropout=.2
         ):
-        
+
         self.latent_dim = latent_dim
         self.n_clusters = n_clusters
         self.lambda_cluster = lambda_cluster
@@ -131,6 +131,8 @@ class scACC():
             lr_pretrain=1e-3,
             lr_train=1e-3,
 
+            early_stopping=True,
+
             require_pretrain_phase=True,
             require_train_phase=True, 
             evaluation=False,
@@ -158,10 +160,10 @@ class scACC():
 
         if X_test is not None:
             self.X_test = torch.tensor(X_test, dtype=torch.float32).to(self.device)
-            self.X_test = torch.tensor(X_test, dtype=torch.float32)
+            self.X_test = torch.tensor(self.X_test, dtype=torch.float32)
         if y_test is not None:
             self.y_test = torch.tensor(y_test, dtype=torch.float32).to(self.device)
-            self.y_test = torch.tensor(y_test, dtype=torch.float32)
+            self.y_test = torch.tensor(self.y_test, dtype=torch.float32)
 
         self.evaluation = evaluation
         self.plot_evaluation = plot_evaluation
@@ -171,15 +173,16 @@ class scACC():
 
         self.epoch_train = epoch_train
         self.fold_num = fold_num
-            
+        
         if require_pretrain_phase:
-            # print("Pretraining...")
+            print("Pretraining...")
             self._pretrain(X_train, lr=lr_pretrain, epoch_pretrain=epoch_pretrain, batch_size=batch_size)
-            # print("Pretraining complete.\n")
+            print("Pretraining complete.\n")
         if require_train_phase:
-            # print('Training...')
-            self._train(X_train, y_train, lr=lr_train, epoch_train=epoch_train, batch_size=batch_size)
-            # print("Training complete.\n")
+            print('Training...')
+            self._train(X_train, y_train, lr=lr_train, epoch_train=epoch_train, batch_size=batch_size, 
+                        early_stopping=early_stopping, X_test=self.X_test, y_test=self.y_test)
+            print("Training complete.\n")
 
     def _pretrain(self, X_train, lr, epoch_pretrain, batch_size, optimizer='adam'):
         r"""
@@ -211,7 +214,7 @@ class scACC():
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
-            # print("epoch {}\t\t loss={:.4f}".format(epoch, total_loss/len(train_loader)))
+            print("epoch {}\t\t loss={:.4f}".format(epoch, total_loss/len(train_loader)))
 
         # print("Initializing cluster centroids...")
         self.clusters = torch.nn.Parameter(torch.Tensor(self.n_clusters, self.latent_dim))
@@ -227,14 +230,18 @@ class scACC():
         gc.collect()
         torch.cuda.empty_cache()
 
-
-    def _train(self, X_train, y_train, lr, epoch_train, batch_size):
+    def _train(self, X_train, y_train, lr, epoch_train, batch_size, early_stopping=False, X_test=None, y_test=None):
         r"""
         Training phase.
         """
-        # prepare training data loader
+        # prepare  data loader
         train_loader = torch.utils.data.DataLoader(
             subDataset(X_train, y_train), # from utils
+            batch_size=batch_size, 
+            shuffle=True, 
+            drop_last=True)
+        test_loader = torch.utils.data.DataLoader(
+            subDataset(X_test, y_test), # from utils
             batch_size=batch_size, 
             shuffle=True, 
             drop_last=True)
@@ -254,36 +261,115 @@ class scACC():
         y_train = y_train.to(self.device)
 
         # train
+        early_stopping = False
+        best_test_loss = float('inf')
+        patience = 10
+        counter = 0
+        
         optimizer = torch.optim.Adam(self.ae.parameters(), lr=lr)
         for epoch in range(epoch_train):
-            with torch.no_grad():
-                z = self.ae.encoder(X_train)
-            q = calc_q(z, self.clusters.data, self.alpha)
-            p = target_distribution(q.data)
-            self.P = p # for evaluation
-            # minibatch gradient descent to train AE
-            self.ae.train()
-            for x, y, idx in train_loader:
-                x = x.to(self.device)
-                # x2 = add_noise(x)  # for denoising AE
-                x_bar = self.ae(x)
-                z = self.ae.encoder(x)
-                q = calc_q(z, self.clusters.data, self.alpha)
-                rec_loss = F.mse_loss(x_bar, x) # AE reconstruction loss
-                kl_loss = F.kl_div(q.log(), p[idx]) # KL-div loss # NOTE do not use reduction='batchmean', it will significantly lower performance (why?)
-                # phenotype entropy loss
-                y = torch.tensor(pd.get_dummies(y.cpu().numpy()).to_numpy(), dtype=torch.float32).to(self.device)
-                wpheno = q.T@y + 1e-9 # weighted phenotype by clusters. add 1e-9 to prevent log(0)
-                wpheno /= wpheno.sum(dim=1, keepdim=True)               
-                ent_loss = torch.mean(-1*torch.sum(wpheno*wpheno.log(), 1))
-        
-                # total joint loss
-                loss = self.lambda_cluster*kl_loss + self.lambda_phenotype*ent_loss + rec_loss 
 
-                optimizer.zero_grad(set_to_none=True)
-                loss.backward()
-                optimizer.step()
-                            
+            if not early_stopping:
+                self.ae.train() # NOTE
+                test_loss = 0.0
+                train_loss = 0.0
+                train_pheno_loss = 0.0
+                test_pheno_loss = 0.0
+                
+                # for evaluation purpose
+                with torch.no_grad():
+                    z = self.ae.encoder(X_train)
+                q = calc_q(z, self.clusters.data, self.alpha)
+                p = target_distribution(q.data)
+                self.P = p
+                
+                # minibatch gradient descent to train AE
+                for x, y, idx in train_loader:
+                    x = x.to(self.device)
+                    # x2 = add_noise(x)  # for denoising AE
+                    x_bar = self.ae(x)
+                    z = self.ae.encoder(x)
+                    q = calc_q(z, self.clusters.data, self.alpha)
+                    rec_loss = F.mse_loss(x_bar, x) # AE reconstruction loss
+                    kl_loss = F.kl_div(q.log(), p[idx]) # KL-div loss # NOTE do not use reduction='batchmean', it will significantly lower performance (why?)
+                    # phenotype entropy loss
+                    y = torch.tensor(pd.get_dummies(y.cpu().numpy()).to_numpy(), dtype=torch.float32).to(self.device)
+                    wpheno = q.T@y + 1e-15 # weighted phenotype by clusters. add 1e-9 to prevent log(0)
+                    wpheno /= wpheno.sum(dim=1, keepdim=True)               
+                    ent_loss = torch.mean(-1*torch.sum(wpheno*wpheno.log(), 1))
+            
+                    # total joint loss
+                    loss = self.lambda_cluster*kl_loss + self.lambda_phenotype*ent_loss + rec_loss 
+                    train_loss += loss.item()
+                    train_pheno_loss += ent_loss.item()
+
+                    optimizer.zero_grad(set_to_none=True)
+                    loss.backward()
+                    optimizer.step()
+
+                train_pheno_loss /= len(train_loader)
+                train_loss /= len(train_loader)
+
+
+                with torch.no_grad():
+                    z = self.ae.encoder(X_test)
+                q = calc_q(z, self.clusters.data, self.alpha)
+                p = target_distribution(q.data)
+                with torch.no_grad():
+                    for x, y, idx in test_loader:
+                        x = x.to(self.device)
+                        x_bar = self.ae(x)
+                        z = self.ae.encoder(x)
+                        q = calc_q(z, self.clusters.data, self.alpha)
+                        rec_loss = F.mse_loss(x_bar, x) # AE reconstruction loss
+                        kl_loss = F.kl_div(q.log(), p[idx]) # KL-div loss # NOTE do not use reduction='batchmean', it will significantly lower performance (why?)
+                        # phenotype entropy loss
+                        y = torch.tensor(pd.get_dummies(y.cpu().numpy()).to_numpy(), dtype=torch.float32).to(self.device)
+                        wpheno = q.T@y + 1e-15 # weighted phenotype by clusters. add 1e-9 to prevent log(0)
+                        wpheno /= wpheno.sum(dim=1, keepdim=True)               
+                        ent_loss = torch.mean(-1*torch.sum(wpheno*wpheno.log(), 1))
+                        # total joint loss
+                        loss = self.lambda_cluster*kl_loss + self.lambda_phenotype*ent_loss + rec_loss 
+                        test_loss += loss.item()
+                        test_pheno_loss += ent_loss.item()
+                    test_loss /= len(test_loader)
+                    test_pheno_loss /= len(test_loader)
+
+                # with torch.no_grad():
+                #     for x, y, idx in test_loader:
+                #         x = x.to('cpu') # NOTE x = x.to(self.device)
+                #         y = y.to('cpu') # NOTE
+                #         ae = copy.deepcopy(self.ae) # NOTE
+                #         ae = ae.to(torch.device('cpu'))
+                #         x_bar = ae(x)
+                #         z = ae.encoder(x)
+                #         clusters_temp = self.clusters.detach().cpu()
+                #         q = calc_q(z, clusters_temp, self.alpha)
+                #         rec_loss = F.mse_loss(x_bar, x) # AE reconstruction loss
+                #         kl_loss = F.kl_div(q.log(), p[idx]) # KL-div loss # NOTE do not use reduction='batchmean', it will significantly lower performance (why?)
+                #         # phenotype entropy loss
+                #         y = torch.tensor(pd.get_dummies(y.numpy()).to_numpy(), dtype=torch.float32) # NOTE
+                #         wpheno = q.T@y + 1e-15 # weighted phenotype by clusters. add 1e-9 to prevent log(0)
+                #         wpheno /= wpheno.sum(dim=1, keepdim=True)               
+                #         ent_loss = torch.mean(-1*torch.sum(wpheno*wpheno.log(), 1))
+                #         # total joint loss
+                #         loss = self.lambda_cluster*kl_loss + self.lambda_phenotype*ent_loss + rec_loss 
+                #         test_loss += loss.item()
+                #         test_pheno_loss += ent_loss.item()
+                #     test_loss /= len(test_loader)
+                #     test_pheno_loss /= len(test_loader)
+
+                print(f"Epoch {epoch+1}: Train Loss = {train_loss:.4f}, Tst Loss = {test_loss:.4f}, \
+                      trn pheno loss = {train_pheno_loss:.4f}, test pheno loss = {test_pheno_loss:.4f}")
+                
+                if test_loss < best_test_loss:
+                    best_test_loss = test_loss
+                    counter = 0
+                else:
+                    counter += 1
+                    if counter >= patience:
+                        early_stopping = True
+                        print("Early stopping triggered!")
 
             if self.evaluation:
                 self.evaluate(X_train, y_train, epoch)
