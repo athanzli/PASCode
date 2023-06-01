@@ -11,6 +11,7 @@ from scipy.sparse import csr_matrix
 import random
 import re
 
+import torch
 # rpy2 setup to run edgeR functions
 from rpy2.robjects.packages import PackageNotInstalledError, importr
 import rpy2.robjects.numpy2ri
