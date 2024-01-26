@@ -42,6 +42,25 @@ git clone https://github.com/daifengwanglab/PASCode
 
 We provide pre-trained GAT models for AD, AD progression, Sleep Weight Gain Guilt Suicide, WeightLoss PMA and Depression Mood. Users are advised to follow our tutorial on input data preprocessing and the usage of such models in **PASCodePretrainedAnnotation.py** under the **tutorials** directory.
 
+To load a pre-trained GAT model and predict PAC scores, simply follow:
+
+```python
+import PASCode
+import torch
+
+model = PASCode.model.GAT(
+    in_channels=adata.X.shape[1], out_channels=64, num_class=3, heads=4)
+model.load_state_dict(torch.load('./trained_model.pt'))
+
+adata.obs['pac_score'] = model.predict(
+    PASCode.Data().adata2gdata(adata)) # NOTE prediction
+```
+
+```python
+sc.pl.umap(adata, color=['pac_score', 'syn_label', 'broad.cell.type'])
+```
+![output](https://github.com/daifengwanglab/PASCode/assets/109684042/9d96f755-27b9-4966-9ddd-74c3624719ea)
+
 ### Training models from scratch with DA tools
 This involves four steps: 
 1) input data preprocessing and graph construction. 
