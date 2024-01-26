@@ -50,18 +50,22 @@ To load a pre-trained GAT model and predict PAC scores, simply follow:
 import PASCode
 import torch
 
+adata = sc.read_h5ad(DATA_PATH + "seaad.h5ad")
+
 model = PASCode.model.GAT(
     in_channels=adata.X.shape[1], out_channels=64, num_class=3, heads=4)
-model.load_state_dict(torch.load('./trained_model.pt'))
 
-adata.obs['pac_score'] = model.predict(
-    PASCode.Data().adata2gdata(adata)) # NOTE prediction
+# choose from c02_model, r01_model, c90_model, r91_model, c92_model
+model.load_state_dict(torch.load('./pretrained_models/c02_model.pt'))
+
+# predict
+adata.obs['pac_score'] = model.predict(PASCode.Data().adata2gdata(adata))
 ```
 
 ```python
-sc.pl.umap(adata, color=['pac_score', 'syn_label', 'broad.cell.type'])
+sc.pl.umap(adata, color=['pac_score', 'Subclass'])
 ```
-![output](https://github.com/daifengwanglab/PASCode/assets/109684042/9d96f755-27b9-4966-9ddd-74c3624719ea)
+![output](https://github.com/daifengwanglab/PASCode/assets/109684042/8f41bea0-ca1f-42e3-8d38-d64eee562176)
 
 ### Training models from scratch with DA tools
 This involves four steps: 
