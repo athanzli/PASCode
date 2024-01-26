@@ -29,7 +29,7 @@ The script is based on python 3.10 above and requires the following packages:
 
 Some DA tools are either based on R programming languages or provided only by Github code, which can be installed according to:
 - DAseq: https://github.com/KlugerLab/DAseq
-- Milo: follow instructions on https://github.com/emdann/milopy/tree/master and put 'milopy' under the 'PASCode' directory.
+- Milo: follow instructions on https://github.com/emdann/milopy/tree/master and put **milopy** under the **PASCode** directory.
 
 ## Download code
 ```python
@@ -40,7 +40,7 @@ git clone https://github.com/daifengwanglab/PASCode
 
 ### Using pre-trained model
 
-We provide pre-trained GAT models for AD, AD progression, Sleep Weight Gain Guilt Suicide, WeightLoss PMA and Depression Mood. Users are advised to follow our tutorial on input data preprocessing and the usage of such models in './demo/PASCodePretrainedAnnotation.py'
+We provide pre-trained GAT models for AD, AD progression, Sleep Weight Gain Guilt Suicide, WeightLoss PMA and Depression Mood. Users are advised to follow our tutorial on input data preprocessing and the usage of such models in **PASCodePretrainedAnnotation.py** under the **demo** directory.
 
 ### Training models from scratch with DA tools
 This involves four steps: 
@@ -49,7 +49,7 @@ This involves four steps:
 3) train the Graph Attention Network (GAT) with such labels. 
 4) use the trained model for PAC score prediction.
 
-Users are advised to follow our tutorial on input data preprocessing and the usage of such models in './demo/PASCodeFromScratch.py'
+Users are advised to follow our tutorial on input data preprocessing and the usage of such models in **PASCodeFromScratch.py** under the **demo** directory.
 
 ## License
 MIT License
