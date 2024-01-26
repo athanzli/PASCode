@@ -65,7 +65,7 @@ adata.obs['pac_score'] = model.predict(PASCode.Data().adata2gdata(adata))
 ```python
 sc.pl.umap(adata, color=['pac_score', 'Subclass'])
 ```
-![output](https://github.com/daifengwanglab/PASCode/assets/109684042/8f41bea0-ca1f-42e3-8d38-d64eee562176)
+![output](https://github.com/daifengwanglab/PASCode/assets/109684042/d62dbfcc-920a-4774-8b4a-c03a253899f8)
 
 ### Training models from scratch with DA tools
 This involves four steps: 
