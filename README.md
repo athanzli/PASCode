@@ -40,7 +40,7 @@ git clone https://github.com/daifengwanglab/PASCode
 
 ### Using pre-trained model
 
-We provide pre-trained GAT models for AD, AD progression, Sleep Weight Gain Guilt Suicide, WeightLoss PMA and Depression Mood. Users are advised to follow our tutorial on input data preprocessing and the usage of such models in **PASCodePretrainedAnnotation.py** under the **demo** directory.
+We provide pre-trained GAT models for AD, AD progression, Sleep Weight Gain Guilt Suicide, WeightLoss PMA and Depression Mood. Users are advised to follow our tutorial on input data preprocessing and the usage of such models in **PASCodePretrainedAnnotation.py** under the **tutorials** directory.
 
 ### Training models from scratch with DA tools
 This involves four steps: 
@@ -49,7 +49,7 @@ This involves four steps:
 3) train the Graph Attention Network (GAT) with such labels. 
 4) use the trained model for PAC score prediction.
 
-Users are advised to follow our tutorial on input data preprocessing and the usage of such models in **PASCodeFromScratch.py** under the **demo** directory.
+Users are advised to follow our tutorial on input data preprocessing and the usage of such models in **PASCodeFromScratch.py** under the **tutorials** directory.
 
 ## License
 MIT License
