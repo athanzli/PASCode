@@ -47,13 +47,12 @@ This involves four steps:
 3) Step 3: Train the Graph Attention Network (GAT) on the balanced subset. 
 4) Step 4: Use the trained model for PAC score annnotation for the whole dataset.
 
-Here we provide an example of the whole procedure:
+Here we provide an example of the complete procedure:
 
 ```python
-#%%
-PASCODE_PATH = ".."
 
 import sys
+PASCODE_PATH = ".."
 sys.path.append(PASCODE_PATH) # NOTE
 import PASCode
 
@@ -79,7 +78,9 @@ donor_col = 'subid' # donor id column
 # PASCode graph building is based on the "X_pca" field in adata.obsm
 # if not, the function will automatically run sc.pp.pca to get the pca coordinates based on adata.X
 PASCode.graph.build_graph(adata)
+```
 
+```python
 ###############################################################################
 # Step 2: subsample, build graph, and get aggregated labels
 ###############################################################################
@@ -108,7 +109,9 @@ PASCode.da.agglabel(
 
 # assign aggregated labels to the whole anndata object which has the whole graph
 adata.obs.loc[adata_pac.obs.index, 'rra_pac'] = adata_pac.obs['rra_pac'].values
+```
 
+```python
 ###############################################################################
 # Step 3: train GAT model
 ###############################################################################
@@ -122,7 +125,9 @@ model = PASCode.model.train_gat(
     donor_col,
     cond_col
 )
+```
 
+```python
 ###############################################################################
 # Step 4: using the trained model for PAC score predictions
 ###############################################################################
@@ -130,7 +135,9 @@ model.load_state_dict(torch.load('./trained_model.pt'))
 adata.obs['pac_score'] = model.predict(
     PASCode.Data().adata2gdata(adata)
 )
+```
 
+```python
 ###############################################################################
 # save
 ###############################################################################
