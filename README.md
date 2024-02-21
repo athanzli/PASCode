@@ -47,21 +47,21 @@ This involves four steps:
 3) Step 3: Train the Graph Attention Network (GAT) on the balanced subset. 
 4) Step 4: Use the trained model for PAC score annnotation for the whole dataset.
 
-Here we provide an example of the complete procedure:
+Here we provide an example of the complete procedure.
 
+
+First of all, we need to import the corresponding library.
 ```python
-
-import sys
-PASCODE_PATH = ".."
-sys.path.append(PASCODE_PATH) # NOTE
 import PASCode
-
 import scanpy as sc
 import numpy as np
 import torch
 
 DATA_PATH = '../data/' # NOTE
+```
 
+For the first step, we need to load the anndata object, which is required to have preprocessed gene expression data stored in anndata.X, and information regarding conditions and donor IDs stored in anndata.obs:
+```python
 ###############################################################################
 # Step 1: build graph
 ###############################################################################
@@ -80,6 +80,7 @@ donor_col = 'subid' # donor id column
 PASCode.graph.build_graph(adata)
 ```
 
+The second step subsamples donors to obtain a donor-number-balanced subset, which is then input to PASCode ensemble DA tools and RRA to get aggregated cell labels. Aggregated labels are assigned back to the original anndata object in the end.
 ```python
 ###############################################################################
 # Step 2: subsample, build graph, and get aggregated labels
@@ -111,6 +112,7 @@ PASCode.da.agglabel(
 adata.obs.loc[adata_pac.obs.index, 'rra_pac'] = adata_pac.obs['rra_pac'].values
 ```
 
+The third step trains a GAT model using the preprocessed anndata object from step 2.
 ```python
 ###############################################################################
 # Step 3: train GAT model
@@ -127,6 +129,7 @@ model = PASCode.model.train_gat(
 )
 ```
 
+Lastly, PAC scores are annotated for all single cells in the original dataset using the trained GAT model.
 ```python
 ###############################################################################
 # Step 4: using the trained model for PAC score predictions
