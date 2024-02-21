@@ -42,10 +42,10 @@ git clone https://github.com/daifengwanglab/PASCode
 
 ### Training models from scratch
 This involves four steps: 
-1) Step 1: input data preprocessing and graph construction. 
-2) Step 2: run Differential Abundance (DA) tools and Robust Rank Aggregation (RRA) to get aggregated cell labels for a donor-subsampled balanced subset. 
-3) Step 3: train the Graph Attention Network (GAT) on the balanced subset. 
-4) Step 4: use the trained model for PAC score annnotation for the whole dataset.
+1) Step 1: Graph construction for the whole data.
+2) Step 2: (For a donor-number-balanced subset) Graph construction. Run Differential Abundance (DA) tools and Robust Rank Aggregation (RRA) to get aggregated cell labels for a donor-number-balanced subset.
+3) Step 3: Train the Graph Attention Network (GAT) on the balanced subset. 
+4) Step 4: Use the trained model for PAC score annnotation for the whole dataset.
 
 Here we provide an example of the whole procedure:
 
