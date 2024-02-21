@@ -55,23 +55,43 @@ def plot_umap(
     s=2,
     use_default_colors=False
 ):
+    r"""
+    Args: 
+        class_palette: dict
+    """
     
     adata.obs[class_col] = adata.obs[class_col].astype('category')
 
     id_and_class_col = 'id_and_' + class_col
     class_id_col = class_col + '_id'
     
-    dic = dict(zip(adata.obs[class_col].unique().sort_values(), 
-        [str(int(cl_id) + 1) + ': ' + str(cl)
-        for cl_id, cl in enumerate(adata.obs[class_col].unique().sort_values())]))
+    # dic = dict(zip(adata.obs[class_col].unique().sort_values(), 
+    #     [str(int(cl_id) + 1) + ': ' + str(cl)
+    #     for cl_id, cl in enumerate(adata.obs[class_col].unique().sort_values())]))
+    if class_palette is not None:
+        dic = dict(zip(
+            list(class_palette.keys()),
+            [str(int(i)+1) + ': ' + list(class_palette.keys())[i] for i in range(len(class_palette))]
+        ))
+    else:
+        dic = dict(zip(
+            adata.obs[class_col].unique().sort_values(),
+            [str(int(i)+1) + ': ' + str(adata.obs[class_col].unique().sort_values()[i]) 
+                for i in range(len(adata.obs[class_col].unique().sort_values()))]
+        ))
     adata.obs[id_and_class_col] = [dic[cl] for cl in adata.obs[class_col]]
     adata.obs[class_id_col] = [int(dic[cl].split(':')[0]) for cl in adata.obs[class_col]]
 
     if class_palette is not None:
-        class_palette = dict(sorted(class_palette.items(), key=lambda x: x[0]))
+        # class_palette = dict(sorted(class_palette.items(), key=lambda x: x[0]))
+        # id_and_class_palette = dict(zip(
+        #     [str(int(i)+1) + ': ' + str(adata.obs[class_col].unique().sort_values()[i]) 
+        #         for i in range(len(adata.obs[class_col].unique().sort_values()))],
+        #     list(class_palette.values()))
+        # )
         id_and_class_palette = dict(zip(
-            [str(int(i)+1) + ': ' + str(adata.obs[class_col].unique().sort_values()[i]) 
-                for i in range(len(adata.obs[class_col].unique().sort_values()))],
+            [str(int(i)+1) + ': ' + list(class_palette.keys())[i] 
+                for i in range(len(class_palette))],
             list(class_palette.values()))
         )
     else:

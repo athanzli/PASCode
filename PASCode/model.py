@@ -86,11 +86,10 @@ class Data:
         - data (torch_geometric.data.Data): A PyTorch Geometric Data object.
         """
 
-        # Convert adjacency matrix to COO format and then to edge indices
+        # convert connectivies to COO format and then to edge indices
         coo_data = adata.obsp['connectivities'].tocoo()
         edge_index = torch.LongTensor([coo_data.row, coo_data.col])
 
-        # Create the PyTorch Geometric Data object
         data = torch_geometric.data.Data(
             x=torch.from_numpy(adata.X).to(torch.float32),
             y=torch.from_numpy(y).to(torch.long) if y is not None else None,

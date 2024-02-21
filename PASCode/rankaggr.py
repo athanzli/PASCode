@@ -54,4 +54,4 @@ def rra(adata, score_cols=['milo', 'meld', 'cna', 'daseq']):
     adata.obs[rra_col] = adata.obs[rra_col].astype(float)
     print(f"----------------------------- RobustRankAggregation Time cost (s): {(time.time() - st):.2f} -----------------------------\n\n")
 
-    # return adata.obs[rra_col].values
+    return adata.obs[rra_col].values
