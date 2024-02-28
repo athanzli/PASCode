@@ -1,12 +1,20 @@
 # Phenotype Associated Single Cell encoder (PASCode)
 
-Phenotype Associated Single Cell encoder (PASCode) is a machine learning framework for phenotype scoring of single cells. PASCode ensembles multiple Differential Abundance (DA) tools through a Robust Rank Aggregation (RRA) algorithm, and uses a graph neural network to robustly annotate the phenotype association scores for single cells. PASCode not only outperforms individual DA tools but also can transfer its latent representations to predict the PACs of individuals without known phenotypes. 
+Phenotype Associated Single Cell encoder (PASCode) is a machine learning framework for phenotype scoring of single cells. PASCode ensembles multiple Differential Abundance (DA) tools through a Robust Rank Aggregation (RRA) algorithm, and uses a graph neural network to robustly annotate the phenotype association scores for single cells. PASCode not only outperforms individual DA tools but also can transfer its latent representations to predict the PACs of individuals without known phenotypes. PASCode is built based on the python package _anndata_, taking an anndata object with graph and gene expression data as input, and produces PAC scores for each cell as output. PASCode is widely applicable to any pair of phenotypic labels.
 
 ![PASCodeworkflow](https://github.com/daifengwanglab/PASCode/assets/109684042/f20719a9-241e-4631-9cbb-448388fc1df2)
 
-PASCode provides both training from scratch and pre-trained models for the annotation of Phenotype Associated Cell (PAC) scores:
-* Training from scratch: the user can also use Differential Abundance (DA) tools and Robust Rank Aggregation (RRA) using our provided PASCode functions to get aggregated cell labels, and then train the Graph Attention Network (GAT) for PAC score annotations.
-* Pre-trained models for direct PAC score annotation: we provide models pre-trained on the PsychAD consortium for direct AD and NPS PAC score predictions.
+## PASCode provides both training from scratch and pre-trained models for the annotation of Phenotype Associated Cell (PAC) scores:
+### PASCode custom-training: the user can use Differential Abundance (DA) tools and Robust Rank Aggregation (RRA) using our provided PASCode functions to get aggregated cell labels, and then train the Graph Attention Network (GAT) for PAC score annotations. This includes the following steps:
+#### Step 1:
+dfddf
+#### Step 2:
+dfddf
+#### Step 3:
+dfddf
+#### Step 4:
+dfddf
+### * PASCode Pre-trained: we provide models pre-trained on the PsychAD consortium for direct AD and NPS PAC score predictions.
 
 ## Dependencies
 The script is based on python 3.10 above and requires the following packages:
@@ -58,7 +66,7 @@ import torch
 DATA_PATH = '../data/' # NOTE
 ```
 
-For the first step, we need to load the anndata object, which is required to have preprocessed gene expression data stored in anndata.X, and information regarding conditions and donor IDs stored in anndata.obs:
+In step 1, we need to load the anndata object, which is required to have preprocessed gene expression data stored in anndata.X, and information regarding conditions and donor IDs stored in anndata.obs:
 ```python
 ###############################################################################
 # Step 1: build graph
@@ -78,7 +86,7 @@ donor_col = 'subid' # donor id column
 PASCode.graph.build_graph(adata)
 ```
 
-The second step subsamples donors to obtain a donor-number-balanced subset, which is then input to PASCode ensemble DA tools and RRA to get aggregated cell labels. Aggregated labels are assigned back to the original anndata object in the end.
+Step 2 subsamples donors to obtain a donor-number-balanced subset, which is then input to PASCode ensemble DA tools and RRA to get aggregated cell labels. Aggregated labels are assigned back to the original anndata object in the end.
 ```python
 ###############################################################################
 # Step 2: subsample, build graph, and get aggregated labels
@@ -110,7 +118,7 @@ PASCode.da.agglabel(
 adata.obs.loc[adata_pac.obs.index, 'rra_pac'] = adata_pac.obs['rra_pac'].values
 ```
 
-The third step trains a GAT model using the preprocessed anndata object from step 2.
+Step 3 trains a GAT model using the preprocessed anndata object from step 2.
 ```python
 ###############################################################################
 # Step 3: train GAT model
@@ -127,7 +135,7 @@ model = PASCode.model.train_gat(
 )
 ```
 
-Lastly, PAC scores are annotated for all single cells in the original dataset using the trained GAT model.
+For step 4, PAC scores are annotated for all single cells in the original dataset using the trained GAT model.
 ```python
 ###############################################################################
 # Step 4: using the trained model for PAC score predictions
