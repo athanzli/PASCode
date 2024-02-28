@@ -6,14 +6,19 @@ Phenotype Associated Single Cell encoder (PASCode) is a machine learning framewo
 
 PASCode provides both training from scratch and pre-trained models for the annotation of Phenotype Associated Cell (PAC) scores:
 * PASCode custom-training: the user can use Differential Abundance (DA) tools and Robust Rank Aggregation (RRA) using our provided PASCode functions to get aggregated cell labels, and then train the Graph Attention Network (GAT) for PAC score annotations. This includes the following steps:
+
 Step 1:
 dfddf
+
 Step 2:
 dfddf
+
 Step 3:
 dfddf
+
 Step 4:
 dfddf
+
 * PASCode Pre-trained: we provide models pre-trained on the PsychAD consortium for direct AD and NPS PAC score predictions.
 
 ## Dependencies
