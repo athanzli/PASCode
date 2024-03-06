@@ -48,7 +48,7 @@ adata.write_h5ad(DATA_PATH + 'raw/ROSMAP_raw.h5ad')
 sc.pp.filter_genes(adata, min_cells=3)
 sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
-sc.pp.highly_variable_genes(adata, n_top_genes=5000)
+sc.pp.highly_variable_genes(adata, n_top_genes=5000) # NOTE
 adata.raw = adata
 adata = adata[:, adata.var.highly_variable] 
 
@@ -70,18 +70,23 @@ adata.write_h5ad(DATA_PATH + 'ROSMAP_AggLabel.h5ad')
 
 #%% 
 ###############################################################################
-# preprocess ROSMAP data with PsychAD HVGs (for GAT annotation)
+# preprocess ROSMAP data with PsychAD HVGs (for GAT prediction for Fig. 2)
 ###############################################################################
-adata = sc.read_h5ad(DATA_PATH + "raw/ROSMAP_raw.h5ad")
+adata = sc.read_h5ad(DATA_PATH + "ROSMAP_AggLabel.h5ad") # using the version already undergone log-transformation
+adata = adata.raw
+adata_ori = sc.read_h5ad(DATA_PATH + "raw/ROSMAP_raw.h5ad")
+
 psychad_genes = pd.read_csv('/home/che82/athan/ProjectPASCode/data/PsychAD/PsychAD_hvg_3401.csv', index_col=0)
 ovlp_genes = adata.var_names.intersection(psychad_genes.index)
 rest_genes = psychad_genes.index.difference(ovlp_genes)
 rest_genes_var = pd.DataFrame(index=rest_genes, columns=['gene'], data=rest_genes)
+
 adata = anndata.AnnData(
     X = np.hstack([adata.X.toarray(), np.zeros((adata.shape[0], rest_genes.shape[0]))]),
-    obs = adata.obs,
+    obs = adata_ori.obs,
     var = pd.concat([adata.var, rest_genes_var])
 )
+adata.var.pop('highly_variable')
 adata = adata[:, psychad_genes.index]
 
 sc.pp.scale(adata)
@@ -89,35 +94,15 @@ sc.pp.scale(adata)
 PASCode.graph.build_graph(adata)
 
 sc.pl.umap(adata,color=['diagnosis', 'broad.cell.type'])
-adata.write_h5ad(DATA_PATH + 'ROSMAP_psychad_genes.h5ad')
 
 #%%
 ###############################################################################
-# cell subclass label transferring with PsychAD being reference for Fig. 2
+# GAT prediction to get PAC scores for ROSMAP
 ###############################################################################
-# adata_ref = sc.read_h5ad('/home/che82/athan/ProjectPASCode/data/PsychAD/c02_100v100_removed_outliers.h5ad')
-
-adata_ref = sc.read_h5ad('/home/che82/athan/ProjectPASCode/data/PsychAD/c02_100v100.h5ad')
-# tormv = pd.read_csv("/home/che82/athan/ProjectPASCode/data/PsychAD/240124_PsychAD_freeze3_outlier_nuclei.csv", index_col=0)
-# adata_ref = adata_ref[~adata_ref.obs.index.isin(tormv.index)]
-sc.pp.pca(adata_ref)
-sc.pp.neighbors(adata_ref)
-
-adata = sc.read_h5ad(DATA_PATH + 'ROSMAP_psychad_genes.h5ad')
-pca0 = adata.obsm['X_pca']
-umap0 = adata.obsm['X_umap']
-sc.tl.ingest(adata, adata_ref, obs='subclass') # changes X_pca and X_umap to align with ref
-adata.obsm['X_pca'] = pca0
-adata.obsm['X_umap'] = umap0
-adata.write_h5ad(DATA_PATH + 'ROSMAP_psychad_genes.h5ad')
-
-adata = sc.read_h5ad('/home/che82/athan/ProjectPASCode/data/SEA-AD/SEAAD.h5ad')
-pca0 = adata.obsm['X_pca']
-umap0 = adata.obsm['X_umap']
-sc.tl.ingest(adata, adata_ref, obs='subclass') # changes X_pca and X_umap to align with ref
-adata.obsm['X_pca'] = pca0
-adata.obsm['X_umap'] = umap0
-adata.write_h5ad('/home/che82/athan/ProjectPASCode/data/SEA-AD/SEAAD.h5ad')
+import torch
+model = PASCode.model.GAT(in_channels=3401) # number of genes
+model.load_state_dict(torch.load('/home/che82/athan/ProjectPASCode/train_model/trained_models/c02_model.pt'))
+adata.obs['pac_score'] = model.predict(PASCode.Data().adata2gdata(adata))
 
 #%%
 ###############################################################################
@@ -131,7 +116,7 @@ adata.write_h5ad(DATA_PATH + 'ROSMAP_psychad_genes.h5ad')
 
 #%%
 ###############################################################################
-# use UMAP from original ROSMAP data for ROSMAP_psychad_genes.h5ad
+# use UMAP from original ROSMAP data for ROSMAP_psychad_genes.h5ad # NOTE
 ###############################################################################
 adata = sc.read_h5ad(DATA_PATH + 'ROSMAP_psychad_genes.h5ad')
 adata_ori = sc.read_h5ad(DATA_PATH + 'ROSMAP_AggLabel.h5ad')

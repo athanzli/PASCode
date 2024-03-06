@@ -96,23 +96,11 @@ sc.pp.scale(adata)
 
 #%%
 ###############################################################################
-# cell type label transferring
+# GAT prediction to get PAC scores for SEA-AD
 ###############################################################################
-# remove outliers for PsychAD c02 100v100
-adata_ref = sc.read_h5ad('/home/che82/athan/ProjectPASCode/data/PsychAD/c02_100v100.h5ad')
-tormv = pd.read_csv("/home/che82/athan/ProjectPASCode/data/PsychAD/240124_PsychAD_freeze3_outlier_nuclei.csv", index_col=0)
-adata_ref.X = adata_ref.raw.X
-adata_ref = adata_ref[~adata_ref.obs.index.isin(tormv.index)]
-sc.pp.scale(adata_ref)
-sc.pp.pca(adata_ref)
-sc.pp.neighbors(adata_ref)
-sc.pp.tl.umap(adata_ref)
-adata_ref.write_h5ad('/home/che82/athan/ProjectPASCode/data/PsychAD/c02_100v100_removed_outliers.h5ad')
+import torch
+model = PASCode.model.GAT(in_channels=3401) # number of genes
+model.load_state_dict(torch.load('/home/che82/athan/ProjectPASCode/train_model/trained_models/c02_model.pt'))
+adata.obs['pac_score'] = model.predict(PASCode.Data().adata2gdata(adata))
 
-pca0 = adata.obsm['X_pca']
-umap0 = adata.obsm['X_umap']
-sc.tl.ingest(adata, adata_ref, obs='subclass') # changes X_pca and X_umap to align with ref
-adata.obsm['X_pca'] = pca0
-adata.obsm['X_umap'] = umap0
 adata.write_h5ad(DATA_PATH + 'SEAAD.h5ad')
-
