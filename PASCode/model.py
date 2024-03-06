@@ -11,8 +11,8 @@ import anndata
 class GAT(torch.nn.Module):
     def __init__(self, 
                  in_channels: int, 
-                 out_channels: int = 96, 
-                 num_class: int = None,
+                 out_channels: int = 64, 
+                 num_class: int = 3,
                  heads: int = 4, 
                  drop_rate: Optional[float] = 0.0) -> None:
         super().__init__()

@@ -53,12 +53,19 @@ def plot_umap(
     text_on_plot=True, 
     save_path='./',
     s=2,
-    use_default_colors=False
+    use_default_colors=False,
+    s_text=40
 ):
     r"""
     Args: 
         class_palette: dict
     """
+
+    print("TEMPTMPE!!!!")
+    print(plt.rcParams['font.family'])
+    print(plt.rcParams['font.style'])
+    
+
     
     adata.obs[class_col] = adata.obs[class_col].astype('category')
 
@@ -96,7 +103,7 @@ def plot_umap(
         )
     else:
         num_colors = adata.obs[class_col].nunique()
-        id_and_class_palette = sns.color_palette("tab20", n_colors=num_colors)
+        id_and_class_palette = sns.color_palette("tab20", n_colors=num_colors) # NOTE
 
     _, ax = plt.subplots(figsize=(15, 15))
     sc.pl.embedding(
@@ -147,7 +154,7 @@ def plot_umap(
             umap_key=umap_key,
             ax=ax,
             adjust_kwargs=dict(arrowprops=dict(arrowstyle='-', color='black')),
-            text_kwargs=dict(fontsize=40),
+            text_kwargs=dict(fontsize=s_text),
         )
     fig = ax.get_figure()
     fig.tight_layout()

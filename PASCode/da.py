@@ -21,7 +21,7 @@ def agglabel(
     cond_col,
     pos_cond,
     neg_cond,
-    methods=['milo','meld','daseq']
+    methods=['milo','meld','daseq'],
 ):
     if 'milo' in methods:
         make_nhoods_prop = 0.05 if adata.shape[0] > 1e5 else 0.1 # according to Milo supp. note
@@ -33,6 +33,9 @@ def agglabel(
     if 'daseq' in methods:
         run_daseq(adata, donor_col, cond_col, pos_cond, neg_cond)
 
+    # assert all([method in adata.obs.keys() for method in methods]), \
+    #     "Error: not all DA methods results are in adata.obs."
+
     col_name = 'rra_' + '_'.join(methods)
     adata.obs[col_name] = rra(adata, score_cols=methods)
     adata.obs['rra'] = adata.obs[col_name]
@@ -41,6 +44,8 @@ def agglabel(
         mode='cutoff',
         cutoff=0.5)
     print(adata.obs['rra_pac'].value_counts())
+
+    return adata.obs['rra_pac'].values
 
 def _sort_clusters_by_values(clusters, values):
     """

@@ -10,8 +10,6 @@ import scanpy as sc
 import pandas as pd
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
-import gc
 
 PASCode.random_seed.set_seed(0)
 
@@ -76,14 +74,14 @@ print(subinfo.groupby([cond_col,'Sex']).size().unstack())
 
 # %%
 data = PASCode.model.Data().adata2gdata(
-    adata, 
-    y=adata.obs['rra_pac'].values + 1, 
-    trn_mask=adata.obs['train_mask'].values, 
+    adata,
+    y=adata.obs['rra_pac'].values + 1,
+    trn_mask=adata.obs['train_mask'].values,
     val_mask=adata.obs['val_mask'].values)
 data_loader = PASCode.model.Data().gdata2batch(
-    data, 
+    data,
     batch_size=128,
-    num_parts=2048, 
+    num_parts=2048,
     shuffle=True)
 
 # %%

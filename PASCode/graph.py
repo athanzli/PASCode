@@ -12,18 +12,24 @@ import scanpy as sc
 
 def build_graph(
     adata,
+    use_rep='X_pca',
+    run_umap=True,
     n_pcs=50,
-    run_umap=True
 ):
-    if 'X_pca' not in adata.obsm.keys():
-        print("Running PCA...")
-        sc.pp.pca(adata)
+    if use_rep == 'X_pca':
+        if 'X_pca' not in adata.obsm.keys():
+            print("Running PCA...")
+            sc.pp.pca(adata)
+        else:
+            print("Using anndata.obsm['X_pca'] as rep...")
     else:
-        print("Using anndata.obsm['X_pca'] as rep...")
+        assert use_rep in adata.obsm.keys(), \
+            f"Error: use_rep {use_rep} not in adata.obsm.keys()."
+        print(f"Using {use_rep} as rep...")
 
     print("Builidng graph...")
     st = time.time()
-    sc.pp.neighbors(adata, n_pcs=n_pcs, use_rep='X_pca') # default is 50 PCs
+    sc.pp.neighbors(adata, n_pcs=n_pcs, use_rep=use_rep) # default is 50 PCs
     print("Building graph time cost (s): ", time.time() - st)
 
     if run_umap:
