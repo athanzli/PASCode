@@ -4,9 +4,14 @@ set_seed(RAND_SEED)
 import copy
 import torch
 import torch_geometric
-import pandas as pd
+import scanpy as sc
 from typing import Optional, List, Union
 import anndata
+
+from utils import subject_info
+from graph import build_graph
+from da import agglabel
+from subsample import subsample_donors
 
 class GAT(torch.nn.Module):
     def __init__(self, 
@@ -275,4 +280,177 @@ class Trainer:
         self._plot_learning_curve(epoch_list, train_losses, val_losses)
 
         return best_model
+
+
+
+def get_val_mask(
+    adata: sc.AnnData,
+    subid_col: str,
+    cond_col: str,
+    pos_cond: str,
+    neg_cond: str,
+    sex_col: str,
+    mode: str
+):
+    if mode == 'donor':
+        if sex_col is not None:
+            assert adata.obs[sex_col].nunique() == 2
+            dinfo = subject_info(
+                adata.obs, 
+                subid_col=subid_col, 
+                columns=[cond_col, 'Sex'])
+            num = (dinfo.shape[0] // 40)
+            if num == 0:
+                raise ValueError("The number of subjects is too small for subsampling. Try cell mode.")
+            mp = dinfo[(dinfo['Sex'] == 'Male') & (dinfo[cond_col] == pos_cond)] \
+                    .sample(n=num).index.values
+            fp = dinfo[(dinfo['Sex'] == 'Female') & (dinfo[cond_col] == pos_cond)] \
+                    .sample(n=num).index.values
+            mn = dinfo[(dinfo['Sex'] == 'Male') & (dinfo[cond_col] == neg_cond)] \
+                    .sample(n=num).index.values
+            fn = dinfo[(dinfo['Sex'] == 'Female') & (dinfo[cond_col] == neg_cond)] \
+                    .sample(n=num).index.values
+            sub_sel = np.concatenate([mp, fp, mn, fn])
+        else:
+            dinfo = subject_info(
+                adata.obs, 
+                subid_col=subid_col, 
+                columns=[cond_col])
+            num = (dinfo.shape[0] // 20)
+            if num == 0:
+                raise ValueError("The number of subjects is too small for subsampling. Try cell mode.")
+            psel = dinfo[dinfo[cond_col] == pos_cond] \
+                    .sample(n=num).index.values
+            nsel = dinfo[dinfo[cond_col] == neg_cond] \
+                    .sample(n=num).index.values
+            sub_sel = np.concatenate([psel, nsel])
+        adata.obs['val_mask'] = adata.obs[subid_col].isin(sub_sel).values
+        adata.obs['train_mask'] = ~adata.obs['val_mask']
+
+    elif mode == 'cell':
+        nums = adata.obs['rra_pac'].value_counts()
+        sel1 = adata.obs[adata.obs['rra_pac']==0].sample(n=nums[0]//10).index
+        sel2 = adata.obs[adata.obs['rra_pac']==-1].sample(n=nums[-1]//10).index
+        sel3 = adata.obs[adata.obs['rra_pac']==1].sample(n=nums[1]//10).index
+        sel = np.concatenate([sel1, sel2, sel3])
+        adata.obs['val_mask'] = adata.obs.index.isin(sel)
+        adata.obs['train_mask'] = ~adata.obs['val_mask']
+
+    else:
+        raise ValueError("mode should be either 'donor' or 'cell'.")
+
+    return adata.obs['val_mask']
+
+def train_model(
+    adata: sc.AnnData,
+    agglabel_col: str,
+    batch_size: int = 128,
+    num_parts: int = 2048,
+    save_path: str = './'
+):
+    #
+    data = Data().adata2gdata(
+        adata,
+        y=adata.obs[agglabel_col].values + 1,
+        trn_mask=adata.obs['train_mask'].values,
+        val_mask=adata.obs['val_mask'].values)
+    data_loader = Data().gdata2batch(
+        data,
+        batch_size=batch_size,
+        num_parts=num_parts,
+        shuffle=True)
+    #
+    model = GAT(
+        in_channels=adata.X.shape[1], out_channels=64, num_class=3, heads=4)
+
+    best_model = Trainer(model=model, device='cuda').train(
+        trn_data_loader=data_loader, data_val=data, val_data_loader=None,
+        max_epoch=100, lr=1e-3, lr_decay=[2, 0.5], early_stopping=10, weight_decay=1e-3, # NOTE
+        class_weight=[1, 1, 1])
+    model = best_model
+
+    torch.save(model.state_dict(), './trained_model.pt')
+
+    return model
+
+
+def custrom_train(
+    adata: sc.AnnData,
+    subid_col: str,
+    cond_col: str,
+    pos_cond: str,
+    neg_cond: str,
+    sex_col: str = None,
+    subsample_mode: str = 'top',
+    val_mask_mode: str = 'cell',
+    build_whole_graph: bool = False
+):
+    r"""
+    Args:
+        adata (sc.AnnData): adata.X must not be scaled yet.
+        subid_col: str
+        cond_col: str
+        pos_cond: str
+        neg_cond: str
+    """
+
+    # subsampled with GAT
+    dinfo = subject_info(adata.obs, subid_col, columns=[cond_col])
+    min_num = dinfo[cond_col].value_counts().min()
+    subsample_num = f"{min_num}:{min_num}"
+    adata_pac = subsample_donors(
+        adata=adata,
+        subsample_num=subsample_num,
+        donor_col=subid_col,
+        cond_col=cond_col,
+        pos_cond=pos_cond,
+        neg_cond=neg_cond,
+        sex_col=sex_col,
+        mode=subsample_mode,
+    )
+    ## build graph
+    sc.pp.scale(adata_pac)
+    sc.pp.pca(adata_pac)
+    adata_pac = build_graph(adata=adata_pac)
+    ## run DA to get aggregated labels
+    adata_pac.obs['rra_pac'] = agglabel(
+        adata_pac,
+        subid_col,
+        cond_col,
+        pos_cond,
+        neg_cond,
+        methods=['milo', 'meld', 'daseq'], # NOTE
+    )
+    ## assign DA res and agg. labels back to adata
+    adata.obs.loc[adata_pac.obs.index, 'subsampled_milo'] = adata_pac.obs['milo'].values
+    adata.obs.loc[adata_pac.obs.index, 'subsampled_meld'] = adata_pac.obs['meld'].values
+    adata.obs.loc[adata_pac.obs.index, 'subsampled_daseq'] = adata_pac.obs['daseq'].values
+    adata.obs.loc[adata_pac.obs.index, 'subsampled_rra_pac'] = adata_pac.obs['rra_pac'].values
+    ## get val_mask
+    adata_pac.obs['val_mask'] = get_val_mask(
+        adata=adata_pac,
+        subid_col=subid_col,
+        cond_col=cond_col,
+        pos_cond=pos_cond,
+        neg_cond=neg_cond,
+        sex_col=sex_col,
+        mode=val_mask_mode
+    )
+    adata.obs['val_mask'] = adata.obs.index.isin(
+        adata_pac.obs[adata_pac.obs['val_mask']].index)
+    adata.obs['train_mask'] = adata.obs.index.isin(
+        adata_pac.obs[adata_pac.obs['train_mask']].index)
+    ## train GAT
+    if build_whole_graph:
+        sc.pp.scale(adata)
+        sc.pp.pca(adata)
+        adata = build_graph(adata=adata)
+    agglabel_col = 'subsampled_rra_pac'
+    model = train_model(
+        adata,
+        agglabel_col,
+        batch_size=1, # NOTE
+        num_parts=1 # NOTE
+    )
+    return model
 
