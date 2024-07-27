@@ -18,7 +18,7 @@ PASCode provides both training from scratch and pre-trained models for the annot
 * PASCode Pre-trained: we provide models pre-trained on the PsychAD consortium for direct AD and NPS PAC score predictions.
 
 ## Dependencies
-The script is based on python 3.10 above and requires the following packages:
+The script is based on python >= 3.10 and requires the following packages:
 - numpy >= 1.24.4
 - pandas >= 1.5.3
 - scipy >= 1.11.1
