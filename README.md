@@ -51,7 +51,7 @@ Installation time: 2-5 minutes.
 This involves four steps (running time estimated using the 35k cells in the demo data, may depend on user choices and system):
 1) Step 1: Graph construction for the whole data. Running time ~5min
 2) Step 2: (For a donor-number-balanced subset) Graph construction. Run Differential Abundance (DA) tools and Robust Rank Aggregation (RRA) to get aggregated cell labels for a donor-number-balanced subset. Running time ~10min
-3) Step 3: Train the Graph Attention Network (GAT) on the balanced subset. Running time ~8 min (using a RTX A6000 Graphics card)
+3) Step 3: Train the Graph Attention Network (GAT) on the balanced subset. Running time ~8 min (using an RTX A6000 Graphics card)
 4) Step 4: Use the trained model for PAC score annnotation for the whole dataset. Running time <1min
 
 Here we provide an example of the complete procedure.
