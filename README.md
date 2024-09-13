@@ -17,7 +17,7 @@ PASCode provides both training from scratch and pre-trained models for the annot
 
 * PASCode Pre-trained: we provide models pre-trained on the PsychAD consortium for direct AD and NPS PAC score predictions.
 
-## Installation (4-10 minutes)
+## Installation
 
 ### step 1: install R packages
 
