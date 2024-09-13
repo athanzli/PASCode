@@ -17,45 +17,44 @@ PASCode provides both training from scratch and pre-trained models for the annot
 
 * PASCode Pre-trained: we provide models pre-trained on the PsychAD consortium for direct AD and NPS PAC score predictions.
 
-## Dependencies
-The script is based on python >= 3.10 and requires the following packages:
-- numpy >= 1.24.4
-- pandas >= 1.5.3
-- scipy >= 1.11.1
-- scikit-learn >= 1.2.2
-- scanpy >= 1.9.3
-- anndata >= 0.10.2
-- multianndata >= 0.0.4
-- cna >= 0.1.4
-- meld >= 1.0.0
-- rpy2 >= 3.5.12
-- anndata2ri >= 1.2
-- pyreadr >= 0.4.7
-- torch >= 2.0.0+cu118
-- torch-geometric >= 2.3.1
-- torch-sparse >= 0.6.17+pt20cu118
-- torchvision >= 0.15.1+cu118
+## Installation (4-10 minutes)
 
-Some DA tools are either based on R programming languages or provided only by Github code, which can be installed according to:
-- DAseq: https://github.com/KlugerLab/DAseq
-- Milo: follow instructions on https://github.com/emdann/milopy/tree/master and put **milopy** under the **PASCode** directory.
+### step 1: install R packages
 
-## Download code
+- **RobustRankAggreg** need to be installed for Robust Rank Aggregation (RRA) to get aggregated cell labels.
+
+- **DAseq** (follow instructions in https://github.com/KlugerLab/DAseq) need to be installed if the user wants to include it in the RRA option (it is included in the tutorial code).
+
+- **edgeR** need to be installed in order to run **Milo** if the user wants to include it in the RRA option (it is included in the tutorial code).
+
+Installation time: 2-5 minutes.
+
+### step 2: install PASCode
+
+After installing the R packages:
+
+1) Download the PASCode code from github either by downloading the repository zip file directly or using git commands:
 ```python
 git clone https://github.com/daifengwanglab/PASCode
 ```
 
+2) run
+```
+pip install .
+```
+
+Installation time: 2-5 minutes.
+
 ## Usage
 
 ### Training models from scratch
-This involves four steps: 
-1) Step 1: Graph construction for the whole data.
-2) Step 2: (For a donor-number-balanced subset) Graph construction. Run Differential Abundance (DA) tools and Robust Rank Aggregation (RRA) to get aggregated cell labels for a donor-number-balanced subset.
-3) Step 3: Train the Graph Attention Network (GAT) on the balanced subset. 
-4) Step 4: Use the trained model for PAC score annnotation for the whole dataset.
+This involves four steps (running time estimated using the 35k cells in the demo data, may depend on user choices and system):
+1) Step 1: Graph construction for the whole data. Running time ~5min
+2) Step 2: (For a donor-number-balanced subset) Graph construction. Run Differential Abundance (DA) tools and Robust Rank Aggregation (RRA) to get aggregated cell labels for a donor-number-balanced subset. Running time ~10min
+3) Step 3: Train the Graph Attention Network (GAT) on the balanced subset. Running time ~8 min (for 35k cells in the demo data, using a RTX A6000 Graphics card)
+4) Step 4: Use the trained model for PAC score annnotation for the whole dataset. Running time <1min
 
 Here we provide an example of the complete procedure.
-
 
 First of all, we need to import the corresponding library.
 ```python
@@ -158,7 +157,9 @@ For more details, users are advised to follow our tutorial on input data preproc
 
 ### Using pre-trained model for direct PAC score annotations
 
-We provide pre-trained GAT models for AD, AD progression, Sleep Weight Gain Guilt Suicide, WeightLoss PMA and Depression Mood. Users are advised to follow our tutorial on input data preprocessing and the usage of such models in **PASCodePretrainedAnnotation.py** under the **tutorials** directory.
+We provide pre-trained GAT models for AD, AD progression, Sleep Weight Gain Guilt Suicide, WeightLoss PMA and Depression Mood. Users are advised to follow our tutorial on input data preprocessing and the usage of such models in **PASCodePretrainedAnnotation.py** under the **tutorials** directory. 
+
+Running time < 1min
 
 To load a pre-trained GAT model and predict PAC scores, simply follow:
 
@@ -183,25 +184,3 @@ sc.pl.umap(adata, color=['pac_score', 'Subclass'])
 ```
 ![output](https://github.com/daifengwanglab/PASCode/assets/109684042/d62dbfcc-920a-4774-8b4a-c03a253899f8)
 
-## License
-MIT License
-
-Copyright (c) 2020
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
