@@ -20,7 +20,7 @@ PASCode provides both training from scratch and pre-trained models for the annot
 ## System requirements
 The code has been tested on Ubuntu 20.04 and Windows 12 with the following dependencies:
 
-Python version: 3.10.12 \
+Python version: 3.10.12
 
 numpy=1.26.4\
 scipy=1.14.1\
