@@ -20,19 +20,19 @@ PASCode provides both training from scratch and pre-trained models for the annot
 ## System requirements
 The code has been tested on Ubuntu 20.04 and Windows 12 with the following dependencies:
 
-numpy=1.26.4
-scipy=1.14.1
-scanpy=1.10.2
-pandas=2.0.3
-anndata=0.10.3
-multianndata=0.0.4
-matplotlib=3.9.1
-seaborn=0.13.2
-cna=0.1.6
-meld=1.0.2
-rpy2=3.5.16
-torch=2.4.1
-torch_geometric=2.6.0
+numpy=1.26.4\
+scipy=1.14.1\
+scanpy=1.10.2\
+pandas=2.0.3\
+anndata=0.10.3\
+multianndata=0.0.4\
+matplotlib=3.9.1\
+seaborn=0.13.2\
+cna=0.1.6\
+meld=1.0.2\
+rpy2=3.5.16\
+torch=2.4.1\
+torch_geometric=2.6.0\
 scikit-learn=1.5.2
 
 ## Installation
