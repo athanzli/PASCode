@@ -418,6 +418,7 @@ def subsample_donors(
 
     return adata
 
+from .graph import build_graph
 def align_psychad_gene(adata: anndata.AnnData,):
     r"""
     Take the intersection of adata.var_names and PsychAD genes, and reorder adata.var_names to match the order of PsychAD genes.
@@ -425,6 +426,10 @@ def align_psychad_gene(adata: anndata.AnnData,):
     Returns:
         AnnData: AnnData object with genes aligned to PsychAD genes.
     """
+    if 'connectivities' not in adata.obsp.keys():
+        print("No graph found in adata. Building graph using PCA...")
+        build_graph(adata, run_umap=False)
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(script_dir, "PsychAD_hvg_3401.csv")
     psychad_genes = pd.read_csv(file_path, index_col=0)
