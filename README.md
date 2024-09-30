@@ -32,6 +32,7 @@ scikit-learn==1.5.2
 
 #### Note:
 Current PASCode is built upon the following R package / DA methods versions:
+
 Milo: milopy github repository as of Sep. 28 2024 \
 MELD: v1.0.2 \
 CNA: v0.1.6 \
