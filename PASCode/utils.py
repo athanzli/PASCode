@@ -5,7 +5,11 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import warnings
 import scanpy as sc
+from matplotlib.colors import LinearSegmentedColormap, hex2color, to_hex
+from matplotlib.cm import ScalarMappable
 from typing import List, Optional
+import anndata
+import os
 
 def subject_info(
         obs, 
@@ -61,11 +65,8 @@ def plot_umap(
         class_palette: dict
     """
 
-    print("TEMPTMPE!!!!")
-    print(plt.rcParams['font.family'])
-    print(plt.rcParams['font.style'])
-    
-
+    # print(plt.rcParams['font.family'])
+    # print(plt.rcParams['font.style'])
     
     adata.obs[class_col] = adata.obs[class_col].astype('category')
 
@@ -163,6 +164,33 @@ def plot_umap(
     plt.show()
     return legend_handles, labels
 
+def plot_pac_score(adata, xy_key, pac_col, colors=None, save_path=None, s=2):
+    if colors is None:
+        # colors = ['#1f7a0f', '#ffffff', '#591496']
+        colors = ['#4e72ba', '#ffffff', '#b54a63'] # blue, white, red
+    cmap = mcolors.LinearSegmentedColormap.from_list("", colors)
+    # norm = plt.Normalize(-1, 1)
+    norm = adata.obs[pac_col].min(), adata.obs[pac_col].max()
+    plt.figure(figsize=(15, 15))
+    sns.scatterplot(
+        x=adata.obsm[xy_key][:, 0], 
+        y=adata.obsm[xy_key][:, 1], 
+        hue=adata.obs[pac_col],
+        palette=cmap, 
+        s=s,
+        hue_norm=norm, 
+        legend=False
+    )
+    ax = plt.gca()
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    if save_path:
+        plt.savefig(save_path, format='tiff', bbox_inches='tight', dpi=600)
+    plt.show()
+    plt.close()
+
 def plot_pac_umap(adata, umap_key, pac_col, colors, save_path, s=2):
     if colors is None:
         colors = ['#1f7a0f', '#ffffff', '#591496']
@@ -245,8 +273,6 @@ def plot_cell_scores(x, y, scores, s, colors = ['#73AE65', '#ffffff', '#8C72A6']
         plt.savefig(save_fig_path + save_fig_name + '.png', dpi=300)
 
 
-from matplotlib.colors import LinearSegmentedColormap, hex2color, to_hex
-from matplotlib.cm import ScalarMappable
 def plot_color_bar(
     title,
     vmin=0,
@@ -283,3 +309,140 @@ def plot_color_bar(
     if save_path:
         plt.savefig(save_path, bbox_inches='tight', dpi=600)
     plt.show()
+
+def condition_equal_subjects(adata, subid_col, cond_col):
+    r"""
+    Requiring binary conditions.
+    
+    """
+    dinfo = subject_info(adata.obs, subid_col, columns=[cond_col])
+    min_num = dinfo[cond_col].value_counts().min()
+    max_num = dinfo[cond_col].value_counts().max()
+    if min_num == max_num:
+        return True
+    return False
+
+
+def subsample_donors(
+    adata,
+    subid_col,
+    cond_col,
+    pos_cond,
+    neg_cond,
+    sex_col=None,
+    subsample_num=None,
+    mode='top', # 'random' or 'top'
+):
+    r"""
+    Subsample donors based on the condition
+    
+    Args:
+        adata (AnnData): Annotated data matrix.
+        subsample_num (str): Number of donors to subsample, e.g., '10:10'.
+        subid_col (str): Column name for donor ID.
+        cond_col (str): Column name for condition.
+        pos_cond (str): Positive condition name.
+        neg_cond (str): Negative condition name.
+        sex_col (str, optional): Column name for sex. Default: None.
+        mode (str, optional): Subsampling mode. 'random' means randomly select donors, 'top' means select donors with top cell number. Default: 'random'.
+
+    Returns:
+        AnnData: subsampled AnnData object.
+    """
+    print("Before donor subsampling:")
+    dinfo = subject_info(
+        obs=adata.obs,
+        subid_col=subid_col,
+        columns=[cond_col, sex_col] if sex_col is not None else [cond_col])
+    print(dinfo.groupby([cond_col, sex_col]).size().unstack() if sex_col is not None else dinfo[cond_col].value_counts())
+
+    if subsample_num is None:
+        print("'subsample_num' not provided. Automatically subsample to the minimum number of subjects in the two conditions.")
+        min_num = dinfo[cond_col].value_counts().min()
+        subsample_num = str(min_num) + ':' + str(min_num)
+
+    print("Donor subsampling: ", subsample_num)
+    pos_donor_num = int(subsample_num.split(':')[0])
+    neg_donor_num = int(subsample_num.split(':')[1])
+    if sex_col is None:
+        if mode == 'random':
+            sel_pos = dinfo[dinfo[cond_col]==pos_cond].sample(n=pos_donor_num).index
+            sel_neg = dinfo[dinfo[cond_col]==neg_cond].sample(n=neg_donor_num).index
+        elif mode == 'top':
+            sel_pos = dinfo[dinfo[cond_col]==pos_cond].sort_values(by='cell_num', ascending=False)[:pos_donor_num].index
+            sel_neg = dinfo[dinfo[cond_col]==neg_cond].sort_values(by='cell_num', ascending=False)[:neg_donor_num].index
+        chosen_donors = np.concatenate((sel_pos, sel_neg))
+    else:
+        pos_hf_num = pos_donor_num // 2
+        neg_hf_num = neg_donor_num // 2
+        df = dinfo.groupby([cond_col, sex_col]).size().unstack()
+        female = df.columns[0] # we ignored a strict correspondence here
+        male = df.columns[1]
+        if df.loc[pos_cond].min() >= pos_hf_num:
+            posm_num = pos_hf_num
+            posfm_num = pos_hf_num
+        else:
+            posm_num = df.loc[pos_cond, male]
+            posfm_num = pos_donor_num - posm_num
+        if df.loc[neg_cond].min() >= neg_hf_num:
+            negm_num = neg_hf_num
+            negfm_num = neg_hf_num
+        else:
+            negm_num = df.loc[neg_cond, male]
+            negfm_num = neg_donor_num - negm_num
+        
+        if mode == 'random':
+            pos_m_donors = dinfo[((dinfo[cond_col]==pos_cond)) & (dinfo[sex_col]==male)].sample(n=posm_num).index
+            pos_fm_donors = dinfo[((dinfo[cond_col]==pos_cond)) & (dinfo[sex_col]==female)].sample(n=posfm_num).index
+            neg_m_donors = dinfo[((dinfo[cond_col]==neg_cond)) & (dinfo[sex_col]==male)].sample(n=negm_num).index
+            neg_fm_donors = dinfo[((dinfo[cond_col]==neg_cond)) & (dinfo[sex_col]==female)].sample(n=negfm_num).index
+        elif mode == 'top':
+            pos_m_donors = dinfo[((dinfo[cond_col]==pos_cond)) & (dinfo[sex_col]==male)].sort_values(by='cell_num', ascending=True)[:posm_num].index
+            pos_fm_donors = dinfo[((dinfo[cond_col]==pos_cond)) & (dinfo[sex_col]==female)].sort_values(by='cell_num', ascending=True)[:posfm_num].index
+            neg_m_donors = dinfo[((dinfo[cond_col]==neg_cond)) & (dinfo[sex_col]==male)].sort_values(by='cell_num', ascending=True)[:negm_num].index
+            neg_fm_donors = dinfo[((dinfo[cond_col]==neg_cond)) & (dinfo[sex_col]==female)].sort_values(by='cell_num', ascending=True)[:negfm_num].index
+        chosen_donors = np.concatenate((pos_m_donors, pos_fm_donors, neg_m_donors, neg_fm_donors))
+    adata = adata[adata.obs[subid_col].isin(chosen_donors)]
+    print("After donor subsampling:")
+    dinfo = subject_info(
+        obs=adata.obs,
+        subid_col=subid_col,
+        columns=[cond_col, sex_col] if sex_col is not None else [cond_col])
+    print(dinfo.groupby([cond_col, sex_col]).size().unstack() if sex_col is not None else dinfo[cond_col].value_counts())
+
+    # remove graph connectivity, if it was in original adata. Otherwise, it will cause error
+    if 'neighbors' in adata.uns.keys():
+        del adata.uns['neighbors']
+    if 'connectivities' in adata.obsp.keys():
+        del adata.obsp['connectivities']
+
+    return adata
+
+def align_psychad_gene(adata: anndata.AnnData,):
+    r"""
+    Take the intersection of adata.var_names and PsychAD genes, and reorder adata.var_names to match the order of PsychAD genes.
+
+    Returns:
+        AnnData: AnnData object with genes aligned to PsychAD genes.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_dir, "PsychAD_hvg_3401.csv")
+    psychad_genes = pd.read_csv(file_path, index_col=0)
+
+    adata_ori = adata.copy()
+    ovlp_genes = adata.var_names.intersection(psychad_genes.index)
+    rest_genes = psychad_genes.index.difference(ovlp_genes)
+    rest_genes_var = pd.DataFrame(index=rest_genes, columns=['gene'], data=rest_genes)
+    adata = anndata.AnnData(
+        X = np.hstack([adata.X, np.zeros((adata.shape[0], rest_genes.shape[0]))]),
+        obs = adata.obs,
+        var = pd.concat([adata.var, rest_genes_var]),
+    )
+    adata = adata[:, psychad_genes.index]
+    if len(adata_ori.uns) > 0:
+        adata.uns = adata_ori.uns
+    if len(adata_ori.obsm) > 0:
+        adata.obsm = adata_ori.obsm
+    if len(adata_ori.obsp) > 0:
+        adata.obsp = adata_ori.obsp
+    return adata

@@ -1,206 +1,111 @@
 # Phenotype Associated Single Cell encoder (PASCode)
 
-Phenotype Associated Single Cell encoder (PASCode) is a machine learning framework for phenotype scoring of single cells. PASCode ensembles multiple Differential Abundance (DA) tools through a Robust Rank Aggregation (RRA) algorithm, and uses a graph neural network to robustly annotate the phenotype association scores for single cells. PASCode not only outperforms individual DA tools but also can transfer its latent representations to predict the PACs of individuals with unknown phenotypes. PASCode is built based on the python package _anndata_, taking an anndata object with graph and gene expression data as input, and produces PAC scores for each cell as output. PASCode is widely applicable to any pair of phenotypic labels.
+Phenotype Associated Single Cell encoder (PASCode) is a deep learning framework for phenotype scoring of single cells. PASCode ensembles multiple Differential Abundance (DA) tools through a Robust Rank Aggregation (RRA) algorithm, and uses a graph attention network (GAT) to robustly and accurately annotate phenotype associated cell (PAC) scores for single cells. Given single-cell sequencing data and a contrastive pair of phenotypic labels (e.g., disease vs. control), PASCode outputs PAC scores for each cell. PASCode not only outperforms individual DA tools but also can predict PAC scores for individuals with unknown phenotype labels.
 
-![PASCodeworkflow](https://github.com/daifengwanglab/PASCode/assets/109684042/f20719a9-241e-4631-9cbb-448388fc1df2)
+PASCode integrates existing DA tools (some only available in R), an RRA algorithm, and a trainable GAT model for PAC score annotation. By leveraging the *rpy2* package, PASCode offers a cohesive and straighforward interface for seamless access to these tools, all in python environment. The package simplifies the usage of DA tools, RRA, and the GAT model by providing unified function calls, enabling users to easily perform DA analysis with standardized inputs and outputs.
 
-PASCode provides both training from scratch and pre-trained models for the annotation of Phenotype Associated Cell (PAC) scores:
-* PASCode custom-training: the user can use Differential Abundance (DA) tools and Robust Rank Aggregation (RRA) using our provided PASCode functions to get aggregated cell labels, and then train the Graph Attention Network (GAT) for PAC score annotations. This includes the following steps:
+![flowchart](./images/flowchart.png)
 
-1) Step 1: Graph construction for the whole data.
+Users are advised to refer to our tutorials (*Tutorial_PASCode-RRA.ipynb*, *Tutorial_PASCode-ScorePrediction.ipynb*) for usage of PASCode, and understand how to best utilize PASCode for their own purposes (e.g., donor subsampling approach, DA tool options and parameters, GAT training, etc.).
 
-2) Step 2: (For a donor-number-balanced subset) Graph construction. Run Differential Abundance (DA) tools and Robust Rank Aggregation (RRA) to get aggregated cell labels for a donor-number-balanced subset.
-
-3) Step 3: Train the Graph Attention Network (GAT) on the balanced subset. 
-
-4) Step 4: Use the trained model for PAC score annnotation for the whole dataset.
-
-* PASCode Pre-trained: we provide models pre-trained on the PsychAD consortium for direct AD and NPS PAC score predictions.
-
-## System requirements
+## System requirements and dependencies
 The code has been tested on Ubuntu 20.04 and Windows 12 with the following dependencies:
 
-Python version: 3.10.12
+python==3.10.12
 
-numpy=1.26.4\
-scipy=1.14.1\
-scanpy=1.10.2\
-pandas=2.0.3\
-anndata=0.10.3\
-multianndata=0.0.4\
-matplotlib=3.9.1\
-seaborn=0.13.2\
-cna=0.1.6\
-meld=1.0.2\
-rpy2=3.5.16\
-torch=2.4.1\
-torch_geometric=2.6.0\
-scikit-learn=1.5.2
+numpy==1.26.4\
+scipy==1.14.1\
+scanpy==1.10.2\
+pandas==2.0.3\
+anndata==0.10.3\
+multianndata==0.0.4\
+matplotlib==3.9.1\
+seaborn==0.13.2\
+cna==0.1.6\
+meld==1.0.2\
+rpy2==3.5.16\
+torch==2.3.0\
+torch_scatter=2.1.2\
+torch_sparse=0.6.18\
+torch_geometric==2.3.1\
+scikit-learn==1.5.2
+
+#### Note:
+Current PASCode is built upon the following R package / DA methods versions:
+Milo: milopy github repository as of Sep. 28 2024 \
+MELD: v1.0.2 \
+CNA: v0.1.6 \
+DAseq: v1.0.0 \
+RobustRankAggreg: v1.2.1 \
+edgeR: v4.2.1
 
 ## Installation
 
-### step 1: install R packages
+PASCode is built upon existing DA tools and R packages, thus the user should install those tools (step 1) first before installing PASCode (step 2).
 
-- **RobustRankAggreg** need to be installed for Robust Rank Aggregation (RRA) to get aggregated cell labels.
+### Step 1: Install DA tools and RRA (2~3 min)
 
-- **DAseq** (follow instructions in https://github.com/KlugerLab/DAseq) need to be installed if the user wants to include it in the RRA option (it is included in the tutorial code).
+- *RobustRankAggreg* must be installed for Robust Rank Aggregation (RRA) to get aggregated cell labels. **(R)**
 
-- **edgeR** need to be installed in order to run **Milo** if the user wants to include it in the RRA option (it is included in the tutorial code).
+- *Milo* should be installed (follow instructions in https://github.com/emdann/milopy) if the user wants to include it in the RRA option. **(Python)**
 
-Installation time: 2-5 minutes.
+- *edgeR* must be installed in order to run **Milo**. **(R)**
 
-### step 2: install PASCode
+- *DAseq* should be installed (follow instructions in https://github.com/KlugerLab/DAseq) if the user wants to include it in the RRA option. **(R)**
 
-After installing the R packages:
+### Step 2: Install PASCode (2~3 min)
 
-1) Download the PASCode code from github either by downloading the repository zip file directly or using git commands:
+After completing step 1:
+
+1) Download the PASCode repository from github either by downloading the repository zip file or using git commands:
 ```python
 git clone https://github.com/daifengwanglab/PASCode
 ```
 
-2) run
+2) Navigate to the PASCode directory, and run
 ```
-pip install .
+pip install -r requirements.txt
 ```
 
-Installation time: 2-5 minutes.
+#### Note:
+The user may run into errors regarding *sparse tensor*. This is an existing issue (see https://github.com/pyg-team/pytorch_geometric/discussions/7866#discussioncomment-7970609) with the installation of PyG. In *requirements.txt*, we provided the wheel links to *torch_scatter* and *torch_sparse* to facilitate smooth installation, but that is for torch version 2.3.0 with CPU only.
 
-## Usage
+To install *torch*, *torch-scatter*, *torch-sparse* for cuda, follow PyTorch installation guide and look for the corresponding wheel in https://data.pyg.org/whl/
 
-### Training models from scratch
-This involves four steps (running time estimated using the 35k cells in the demo data, may depend on user choices and system):
-1) Step 1: Graph construction for the whole data. Running time ~5min
-2) Step 2: (For a donor-number-balanced subset) Graph construction. Run Differential Abundance (DA) tools and Robust Rank Aggregation (RRA) to get aggregated cell labels for a donor-number-balanced subset. Running time ~10min
-3) Step 3: Train the Graph Attention Network (GAT) on the balanced subset. Running time ~8 min (using an RTX A6000 Graphics card)
-4) Step 4: Use the trained model for PAC score annnotation for the whole dataset. Running time <1min
+For instance, the following commands install *torch-scatter* and *torch-sparse* with *torch-2.3.0*, *python version 3.10*, *cuda version 12.1* on a *linux* machine.
+```
+pip install https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_scatter-2.1.2%2Bpt23cu121-cp310-cp310-linux_x86_64.whl
 
-Here we provide an example of the complete procedure.
+pip install https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_sparse-0.6.18%2Bpt23cu121-cp310-cp310-linux_x86_64.whl
+```
 
-First of all, we need to import the corresponding library.
+## Quick start
+
 ```python
 import PASCode
 import scanpy as sc
-import numpy as np
-import torch
 
-DATA_PATH = '../data/' # NOTE
-```
+adata = sc.read_h5ad('./data/synth_demo_2v6.h5ad')
 
-In step 1, we need to load the anndata object, which is required to have preprocessed gene expression data stored in anndata.X, and information regarding conditions and donor IDs stored in anndata.obs:
-```python
-###############################################################################
-# Step 1: build graph
-###############################################################################
-file_path = DATA_PATH + 'synth_demo.h5ad'
-adata = sc.read_h5ad(file_path)
+# specify column names for subject ID and condition, and positive/negative conditions
+subid_col = 'subject_id' 
+cond_col = 'phenotype'
+pos_cond = 'cond1'
+neg_cond = 'cond2'
 
-cond_col = 'syn_label' # condition column
-pos_cond = 'cond1' # positive condition
-neg_cond = 'cond2'  # negative condition
-donor_col = 'subid' # donor id column
-
-# assuming the expression data is already preprocessed and stored in adata.X
-# if not, please preprocess the data first
-# PASCode graph building is based on the "X_pca" field in adata.obsm
-# if not, the function will automatically run sc.pp.pca to get the pca coordinates based on adata.X
-PASCode.graph.build_graph(adata)
-```
-
-Step 2 subsamples donors to obtain a donor-number-balanced subset, which is then input to PASCode ensemble DA tools and RRA to get aggregated cell labels. Aggregated labels are assigned back to the original anndata object in the end.
-```python
-###############################################################################
-# Step 2: subsample, build graph, and get aggregated labels
-###############################################################################
-adata_pac = PASCode.subsample.subsample_donors(
+PASCode.model.score(
     adata=adata,
-    subsample_num="6:6", # NOTE change according to the specific donor numbers in the dataset
-    donor_col=donor_col,
+    subid_col=subid_col,
     cond_col=cond_col,
     pos_cond=pos_cond,
     neg_cond=neg_cond,
-    mode='random',
 )
 
-# build graph for the subsampled anndata object
-PASCode.graph.build_graph(adata_pac)
-
-# run DA tools and RRA to get cell aggregate dlabels
-PASCode.da.agglabel(
-    adata_pac,
-    donor_col,
-    cond_col,
-    pos_cond,
-    neg_cond,
-    methods=['milo','meld','daseq']
-)
-
-# assign aggregated labels to the whole anndata object which has the whole graph
-adata.obs.loc[adata_pac.obs.index, 'rra_pac'] = adata_pac.obs['rra_pac'].values
+sc.pl.umap(adata, color=['PAC_score', 'phenotype', 'celltype'])
 ```
 
-Step 3 trains a GAT model using the preprocessed anndata object from step 2.
-```python
-###############################################################################
-# Step 3: train GAT model
-###############################################################################
-agglabel_col = 'rra_pac'
-# this will train a GAT model and save the trained model to the current directory
-# the user is advised to look for more details in the tutorial if they want to 
-# customize certain steps in the training procedure
-model = PASCode.model.train_gat(
-    adata,
-    agglabel_col,
-    donor_col,
-    cond_col
-)
-```
+![demo_plot](./images/demo_plot.png)
 
-For step 4, PAC scores are annotated for all single cells in the original dataset using the trained GAT model.
-```python
-###############################################################################
-# Step 4: using the trained model for PAC score predictions
-###############################################################################
-model.load_state_dict(torch.load('./trained_model.pt'))
-adata.obs['pac_score'] = model.predict(
-    PASCode.Data().adata2gdata(adata)
-)
-```
+Demo running time (including running Milo, MELD, DAseq, and traininig GAT model): 3min.
 
-```python
-###############################################################################
-# save
-###############################################################################
-adata.write_h5ad("./anndata_with_pac_scores.h5ad")
-```
-
-For more details, users are advised to follow our tutorial on input data preprocessing and the usage of such models in **PASCodeFromScratch.py** under the **tutorials** directory.
-
-### Using pre-trained model for direct PAC score annotations
-
-We provide pre-trained GAT models for AD, AD progression, Sleep Weight Gain Guilt Suicide, WeightLoss PMA and Depression Mood. Users are advised to follow our tutorial on input data preprocessing and the usage of such models in **PASCodePretrainedAnnotation.py** under the **tutorials** directory. 
-
-Running time < 1min
-
-To load a pre-trained GAT model and predict PAC scores, simply follow:
-
-```python
-import PASCode
-import torch
-
-adata = sc.read_h5ad(DATA_PATH + "seaad.h5ad")
-
-model = PASCode.model.GAT(
-    in_channels=adata.X.shape[1], out_channels=64, num_class=3, heads=4)
-
-# choose from c02_model, r01_model, c90_model, r91_model, c92_model
-model.load_state_dict(torch.load('./pretrained_models/c02_model.pt'))
-
-# predict
-adata.obs['pac_score'] = model.predict(PASCode.Data().adata2gdata(adata))
-```
-
-```python
-sc.pl.umap(adata, color=['pac_score', 'Subclass'])
-```
-![output](https://github.com/daifengwanglab/PASCode/assets/109684042/d62dbfcc-920a-4774-8b4a-c03a253899f8)
-
+PASCode running time can vary across systems and various use cases, users are advised to follow our tutorials (*Tutorial_PASCode-RRA.ipynb*, *Tutorial_PASCode-ScorePrediction.ipynb*) to understand how to customize their PAC scoring process efficiently and accurately.

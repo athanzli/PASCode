@@ -17,35 +17,32 @@ import warnings
 
 def agglabel(
     adata,
-    donor_col,
+    subid_col,
     cond_col,
     pos_cond,
     neg_cond,
-    methods=['milo','meld','daseq'],
+    da_methods=['milo','meld','daseq'],
 ):
-    if 'milo' in methods:
+    r"""
+    CNA did not perform well in our benchmarking results. 
+    We recommend using MILO, MELD and DAseq instead.
+    """
+    st = time.time()
+    print("============================= DA and RRA... =============================")
+    if 'milo' in da_methods:
         make_nhoods_prop = 0.05 if adata.shape[0] > 1e5 else 0.1 # according to Milo supp. note
-        run_milo(adata, donor_col, cond_col, pos_cond, neg_cond, make_nhoods_prop=make_nhoods_prop)
-    if 'meld' in methods:
+        run_milo(adata, subid_col, cond_col, pos_cond, neg_cond, make_nhoods_prop=make_nhoods_prop)
+    if 'meld' in da_methods:
         run_meld(adata, cond_col, pos_cond, neg_cond, beta=10, knn=15)
-    if 'cna' in methods:
-        run_cna(adata, donor_col, cond_col, pos_cond, neg_cond)
-    if 'daseq' in methods:
-        run_daseq(adata, donor_col, cond_col, pos_cond, neg_cond)
+    if 'cna' in da_methods:
+        run_cna(adata, subid_col, cond_col, pos_cond, neg_cond)
+    if 'daseq' in da_methods:
+        run_daseq(adata, subid_col, cond_col, pos_cond, neg_cond)
 
-    # assert all([method in adata.obs.keys() for method in methods]), \
-    #     "Error: not all DA methods results are in adata.obs."
-
-    col_name = 'rra_' + '_'.join(methods)
-    adata.obs[col_name] = rra(adata, score_cols=methods)
-    adata.obs['rra'] = adata.obs[col_name]
-    adata.obs['rra_pac'] = assign_pac(
-        adata.obs['rra'].values,
-        mode='cutoff',
-        cutoff=0.5)
-    print(adata.obs['rra_pac'].value_counts())
-
-    return adata.obs['rra_pac'].values
+    rra(adata, da_methods=da_methods)
+    print("============================= DA and RRA Time cost (s): ", np.round(time.time() - st, 2), " =============================\n")
+    print(adata.obs['aggreg_label'].value_counts())
+    return adata.obs['aggreg_label'].values
 
 def _sort_clusters_by_values(clusters, values):
     """
@@ -120,18 +117,25 @@ def assign_pac_cna(adata, fdr_thres=0.1):
         adata.obs.loc[adata.obs['cna'] > corr_thres, 'cna_pac'] = 1
         adata.obs.loc[adata.obs['cna'] < - corr_thres, 'cna_pac'] = -1
 
-def run_milo(adata, donor_col, cond_col, pos_cond, neg_cond, 
+def run_milo(adata, subid_col, cond_col, pos_cond, neg_cond, 
              design=None, model_contrast=None,
-             make_nhoods_prop=0.1):
-    print("\n----------------------------- Milo started ... -----------------------------")
+             make_nhoods_prop=0.1, use_rep='X_pca'):
     if 'connectivities' not in adata.obsp:
+        # if anndata does not have X_pca then run PCA using scanpy
+        if use_rep not in adata.obsm.keys():
+            print("'use_pre' not found in adata.obsm.")
+            print('Scaling...')
+            sc.pp.scale(adata)
+            print('Running PCA...')
+            sc.pp.pca(adata, n_comps=50)
         print('Computing connectivities...')
         sc.pp.neighbors(adata)
     st = time.time()
+    print("\n----------------------------- Milo started ... -----------------------------")
     print('Making neighborhoods...')
     make_nhoods(adata, prop=make_nhoods_prop)
     print('Counting neighborhoods...')
-    count_nhoods(adata, sample_col=donor_col)
+    count_nhoods(adata, sample_col=subid_col)
     print('Running differential abundance testing...')
     if design is not None:
         DA_nhoods(adata, design=design)
@@ -154,54 +158,84 @@ def run_milo(adata, donor_col, cond_col, pos_cond, neg_cond,
     adata.obs['cond_bi'] = adata.obs[cond_col].map({pos_cond:1, neg_cond:0})
     mask = ~np.isnan(cell_lfc)
     sign = 2*(np.corrcoef(cell_lfc[mask], adata.obs['cond_bi'][mask])[0,1] > 0) - 1
-    adata.obs['milo_cell_sfdr'] = cell_sfdr # TODO double check
+    adata.obs['milo_cell_sfdr'] = cell_sfdr
     adata.obs['milo_cell_lfc'] = sign*cell_lfc
     adata.obs['milo'] = adata.obs['milo_cell_lfc']
 
-def run_meld(adata, cond_col, pos_cond, neg_cond, beta=60, knn=5, use_rep='X_pca'):
+def run_meld(adata, cond_col, pos_cond, neg_cond, beta=10, knn=15, use_rep='X_pca'):
     r"""
     According to the package documentation and source code, beta = 60 and knn = 5 are default parameter setting.
+    However, we found that beta=10 and knn=15 lead to much more accurate and robust results for our datasets.
+    We therefore recommend using beta=10 and knn=15 for most datasets.
     """
-    print("\n ----------------------------- MELD started ... -----------------------------")
+    # if anndata does not have X_pca then run PCA using scanpy
+    if use_rep not in adata.obsm.keys():
+        print("'use_pre' not found in adata.obsm.")
+        print('Scaling...')
+        sc.pp.scale(adata)
+        print('Running PCA...')
+        sc.pp.pca(adata, n_comps=50)
+
     st = time.time()    
+    print("\n ----------------------------- MELD started ... -----------------------------")
     sample_densities = meld.MELD(beta=beta, knn=knn).fit_transform(adata.obsm[use_rep], adata.obs[cond_col].map({pos_cond: 0, neg_cond: 1})) # 0, 1 for ensuring sign
     print("----------------------------- MELD Time cost (s): ", np.round(time.time() - st, 2), " -----------------------------\n")
+
     adata.obsm['meld_res'] = sample_densities.values
     sample_likelihoods = meld.utils.normalize_densities(sample_densities)
     adata.obsm['meld_res_normalized'] = sample_likelihoods.values
     adata.obs['meld'] = sample_likelihoods.iloc[:,0].values * 2 - 1
 
-def run_cna(adata, donor_col, cond_col, pos_cond, neg_cond):
-    print("\n----------------------------- CNA started ... -----------------------------")
+def run_cna(adata, subid_col, cond_col, pos_cond, neg_cond, allow_low_sample_size=False, use_rep='X_pca'):
     if 'connectivities' not in adata.obsp:
+        # if anndata does not have X_pca then run PCA using scanpy
+        if use_rep not in adata.obsm.keys():
+            print("'use_pre' not found in adata.obsm.")
+            print('Scaling...')
+            sc.pp.scale(adata)
+            print('Running PCA...')
+            sc.pp.pca(adata, n_comps=50)
         print('Computing connectivities...')
         sc.pp.neighbors(adata)
+
     st = time.time()
-    d = multianndata.MultiAnnData(adata, sampleid=donor_col)
+    print("\n----------------------------- CNA started ... -----------------------------")
+    d = multianndata.MultiAnnData(adata, sampleid=subid_col)
     d.obs[cond_col] = d.obs[cond_col].map({pos_cond: 1, neg_cond: 0}).astype(int)
     d.obs_to_sample([cond_col])
     np.int = int # use this line to avoid numpy version issue
-    cna_res = cna.tl.association(d, d.samplem[cond_col].astype('category').cat.codes)
+    cna_res = cna.tl.association(
+        d,
+        d.samplem[cond_col].astype('category').cat.codes,
+        allow_low_sample_size=allow_low_sample_size)
     print("----------------------------- CNA Time cost (s): ", np.round(time.time() - st, 2) , " -----------------------------\n")
+   
     adata.obs['cna'] = cna_res.ncorrs
     adata.uns['cna_fdrs'] = cna_res.fdrs
 
-def run_daseq(adata, donor_col, cond_col, pos_cond, neg_cond, 
+def run_daseq(adata, subid_col, cond_col, pos_cond, neg_cond, 
               k=[50,500,50], 
               use_rep='X_pca'):
     DAseq = rpy2.robjects.packages.importr('DAseq')
     rpy2.robjects.numpy2ri.activate()
 
-    subinfo = subject_info(adata.obs, donor_col, [cond_col])
+    subinfo = subject_info(adata.obs, subid_col, [cond_col])
 
+    # if anndata does not have X_pca then run PCA using scanpy
+    if use_rep not in adata.obsm.keys():
+        print("'use_pre' not found in adata.obsm.")
+        print('Scaling...')
+        sc.pp.scale(adata)
+        print('Running PCA...')
+        sc.pp.pca(adata, n_comps=50)
     X_pca = rpy2.robjects.numpy2ri.py2rpy(adata.obsm[use_rep])
     sampleid_cond1 = rpy2.robjects.StrVector(subinfo[subinfo[cond_col] == neg_cond].index.astype(str).tolist())
     sampleid_cond2 = rpy2.robjects.StrVector(subinfo[subinfo[cond_col] == pos_cond].index.astype(str).tolist())
-    sampleid_each_cell = rpy2.robjects.StrVector(adata.obs[donor_col].astype(str).tolist())
+    sampleid_each_cell = rpy2.robjects.StrVector(adata.obs[subid_col].astype(str).tolist())
     k = rpy2.robjects.IntVector(k)
 
-    print("\n----------------------------- DAseq started ... -----------------------------")
     st = time.time()
+    print("\n----------------------------- DAseq started ... -----------------------------")
     da_cells = DAseq.getDAcells(X=X_pca, 
                                 cell_labels=sampleid_each_cell, 
                                 labels_1=sampleid_cond1, 

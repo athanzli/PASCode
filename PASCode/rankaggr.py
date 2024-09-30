@@ -19,18 +19,26 @@ def _divide_scores(scores, score_col_num, op):
     div_scores.drop('index', axis=1, inplace=True)
     return div_scores
 
-def rra(adata, score_cols=['milo', 'meld', 'cna', 'daseq']):
+def rra(adata, da_methods=['milo', 'meld', 'daseq']):
+    r"""
+    
+    Returns:
+        Aggregated cell labels (adata.obs[aggreglabel_col].values).
+    """
+
+    if len(da_methods) == 1 or da_methods is None:
+        raise ValueError("Please provide at least two DA methods for aggregation.")
 
     RobustRankAggreg = rpy2.robjects.packages.importr('RobustRankAggreg')
     rpy2.robjects.pandas2ri.activate()
 
-    scores = adata.obs[score_cols].dropna() 
+    scores = adata.obs[da_methods].dropna() 
 
     print("\n\n----------------------------- RobustRankAggregation started ... -----------------------------")
     st = time.time()
 
-    pscores = _divide_scores(scores, score_col_num=len(score_cols), op='pos')
-    nscores = _divide_scores(scores, score_col_num=len(score_cols), op='neg')
+    pscores = _divide_scores(scores, score_col_num=len(da_methods), op='pos')
+    nscores = _divide_scores(scores, score_col_num=len(da_methods), op='neg')
 
     print('Aggregating positive score ranks...')
     r_cp = rpy2.robjects.pandas2ri.py2rpy(pscores)
@@ -48,10 +56,16 @@ def rra(adata, score_cols=['milo', 'meld', 'cna', 'daseq']):
     pranks.loc[overlaps, 'Score'] = 0
     nranks.loc[overlaps, 'Score'] = 0
     ranks = pd.concat([pranks, nranks[~nranks.index.isin(overlaps)]])
-    rra_col = 'rra_' + '_'.join(score_cols)
+    rra_col = 'RRA_' + '_'.join(da_methods) # RRA score
     adata.obs.loc[ranks.index, rra_col] = ranks['Score'].values
     adata.obs.loc[adata.obs[rra_col].isna().values, rra_col] = 0
     adata.obs[rra_col] = adata.obs[rra_col].astype(float)
+
+    from .da import assign_pac
+    aggreglabel_col = 'AggregLabel_' + '_'.join(da_methods)
+    adata.obs[aggreglabel_col] = assign_pac(
+        scores=adata.obs[rra_col].values, mode='cutoff', cutoff=0.5)
+    adata.obs['aggreg_label'] = adata.obs[aggreglabel_col].values
     print(f"----------------------------- RobustRankAggregation Time cost (s): {(time.time() - st):.2f} -----------------------------\n\n")
 
-    return adata.obs[rra_col].values
+    return adata.obs['aggreg_label'].values

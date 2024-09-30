@@ -5,13 +5,13 @@ import copy
 import torch
 import torch_geometric
 import scanpy as sc
-from typing import Optional, List, Union
+from typing import Mapping, Optional, List, Union, Any
 import anndata
+import time
 
-from utils import subject_info
-from graph import build_graph
-from da import agglabel
-from subsample import subsample_donors
+from .graph import build_graph
+from .utils import subject_info, subsample_donors
+from .da import agglabel
 
 class GAT(torch.nn.Module):
     def __init__(self, 
@@ -30,20 +30,16 @@ class GAT(torch.nn.Module):
         self.conv1 = torch_geometric.nn.GATConv(in_channels=in_channels,
                                                 out_channels=out_channels,
                                                 heads=heads, concat=True, 
-                                                drop_rate=drop_rate)
+                                                dropout=drop_rate)
         self.conv2 = torch_geometric.nn.GATConv(in_channels=out_channels*heads,
                                                 out_channels=out_channels,
                                                 heads=heads, concat=True, 
-                                                drop_rate=drop_rate)
+                                                dropout=drop_rate)
         self.conv3 = torch_geometric.nn.GATConv(in_channels=out_channels*heads,
                                                 out_channels=num_class,
                                                 heads=heads, concat=False, 
-                                                drop_rate=drop_rate)
+                                                dropout=drop_rate)
         self.layers = torch.nn.ModuleList([self.conv1, self.conv2, self.conv3])
-
-    def reset_parameters(self):
-        for layer in self.layers:
-            layer.reset_parameters()
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -55,16 +51,27 @@ class GAT(torch.nn.Module):
         x = torch.nn.functional.elu(x)
         return x
 
-    def predict(self, data, beta=1):
+    def reset_parameters(self):
+        for layer in self.layers:
+            layer.reset_parameters()
+
+    def predict(self, data, device='cpu'):
         r"""
-        
+        Predicts PAC scores for the given data.
+
+        Args:
+            - data: PyTorch Geometric Data object.
+            - device: Device type (e.g., 'cpu', 'cuda').
         """
+        if not isinstance(data, torch_geometric.data.Data):
+            print("Building PyTorch Geometric Data...")
+            data = Data().adata2gdata(data)
         self.eval()
-        self.to('cpu')
+        self.to(device)
         with torch.no_grad():
             x = self(data)
         x = torch.nn.functional.softmax(x, dim=1).detach().numpy()
-        pred_score = (-1)*x[:, 0]**beta + (0)*x[:,1]**beta + (1)*x[:, 2]**beta  
+        pred_score = x[:, 2] - x[:, 0]
         return pred_score.flatten()
 
 class Data:
@@ -90,6 +97,10 @@ class Data:
         Returns:
         - data (torch_geometric.data.Data): A PyTorch Geometric Data object.
         """
+
+        if 'connectivities' not in adata.obsp:
+            print("No graph connectivities found in adata.obsp.")
+            build_graph(adata, run_umap=False)
 
         # convert connectivies to COO format and then to edge indices
         coo_data = adata.obsp['connectivities'].tocoo()
@@ -124,6 +135,7 @@ class Data:
         - data_loader (torch_geometric.loader.ClusterLoader): A PyTorch Geometric ClusterLoader containing the batches.
         """
         print('Constructing batches...')
+        # NOTE https://github.com/pyg-team/pytorch_geometric/discussions/7866#discussioncomment-7970609
         clusterdata = torch_geometric.loader.ClusterData(
             data, num_parts=num_parts)
         data_loader = torch_geometric.loader.ClusterLoader(
@@ -216,6 +228,7 @@ class Trainer:
               weight_decay: Optional[float] = 0,
               early_stopping: Optional[int] = None,
               class_weight: List[float] = [1, 1, 1],
+              plot_training_curve: bool = True,
               print_epoch_interval: Optional[int] = 1) -> torch.nn.Module:
         """
         Trains a given PyTorch model using the provided data loaders and training parameters.
@@ -244,7 +257,8 @@ class Trainer:
         epoch_count, min_loss = 0, float('inf')
         train_losses, val_losses, epoch_list = [], [], []
 
-        print('Training...')
+        print('\n============================= Training GAT... =============================')
+        st = time.time()
         for epoch in range(max_epoch):
             epoch_list.append(epoch + 1)
             train_loss = self._train_one_epoch(trn_data_loader, criterion, optimizer)
@@ -276,12 +290,12 @@ class Trainer:
                 if epoch_count > early_stopping:
                     break
             print()
+        print(f"\n============================= Training Time cost (s): {(time.time() - st):.2f} =============================")
         
-        self._plot_learning_curve(epoch_list, train_losses, val_losses)
+        if plot_training_curve:
+            self._plot_learning_curve(epoch_list, train_losses, val_losses)
 
         return best_model
-
-
 
 def get_val_mask(
     adata: sc.AnnData,
@@ -289,9 +303,26 @@ def get_val_mask(
     cond_col: str,
     pos_cond: str,
     neg_cond: str,
-    sex_col: str,
-    mode: str
+    aggreg_label_col: str = 'aggreg_label',
+    sex_col: str = None,
+    mode: str = 'cell',
+    val_percent: float = 0.1
 ):
+    r"""
+    Get the validation mask for the given AnnData object.
+    Make sure 'aggre_label' is in adata.obs.
+
+    Args:
+        - adata: AnnData object.
+        - subid_col: Column name of the subject ID.
+        - cond_col: Column name of the condition.
+        - pos_cond: Positive condition.
+        - neg_cond: Negative condition
+        - sex_col: Column name of sex.
+        - mode: 'donor' or 'cell'. If donor, the validation mask will be created based on the donors.
+                If cell, the validation mask will be created based on the cells.
+        - val_percent: The percentage of validation samples. Default is 0.1.
+    """
     if mode == 'donor':
         if sex_col is not None:
             assert adata.obs[sex_col].nunique() == 2
@@ -299,7 +330,7 @@ def get_val_mask(
                 adata.obs, 
                 subid_col=subid_col, 
                 columns=[cond_col, 'Sex'])
-            num = (dinfo.shape[0] // 40)
+            num = (dinfo.shape[0] // (int(100*val_percent)*4))
             if num == 0:
                 raise ValueError("The number of subjects is too small for subsampling. Try cell mode.")
             mp = dinfo[(dinfo['Sex'] == 'Male') & (dinfo[cond_col] == pos_cond)] \
@@ -316,7 +347,7 @@ def get_val_mask(
                 adata.obs, 
                 subid_col=subid_col, 
                 columns=[cond_col])
-            num = (dinfo.shape[0] // 20)
+            num = (dinfo.shape[0] // (int(100*val_percent)*2))
             if num == 0:
                 raise ValueError("The number of subjects is too small for subsampling. Try cell mode.")
             psel = dinfo[dinfo[cond_col] == pos_cond] \
@@ -328,10 +359,12 @@ def get_val_mask(
         adata.obs['train_mask'] = ~adata.obs['val_mask']
 
     elif mode == 'cell':
-        nums = adata.obs['rra_pac'].value_counts()
-        sel1 = adata.obs[adata.obs['rra_pac']==0].sample(n=nums[0]//10).index
-        sel2 = adata.obs[adata.obs['rra_pac']==-1].sample(n=nums[-1]//10).index
-        sel3 = adata.obs[adata.obs['rra_pac']==1].sample(n=nums[1]//10).index
+        if aggreg_label_col is None:
+            raise ValueError("aggreg_label_col should be provided when mode is 'cell'.")
+        nums = adata.obs[aggreg_label_col].value_counts()
+        sel1 = adata.obs[adata.obs[aggreg_label_col]==0].sample(n=nums[0]//int(100*val_percent)).index
+        sel2 = adata.obs[adata.obs[aggreg_label_col]==-1].sample(n=nums[-1]//int(100*val_percent)).index
+        sel3 = adata.obs[adata.obs[aggreg_label_col]==1].sample(n=nums[1]//int(100*val_percent)).index
         sel = np.concatenate([sel1, sel2, sel3])
         adata.obs['val_mask'] = adata.obs.index.isin(sel)
         adata.obs['train_mask'] = ~adata.obs['val_mask']
@@ -344,14 +377,17 @@ def get_val_mask(
 def train_model(
     adata: sc.AnnData,
     agglabel_col: str,
+    device: Union[str, torch.device] = 'cpu',
     batch_size: int = 128,
     num_parts: int = 2048,
+    plot_training_curve: bool = False,
+    save: bool = True,
     save_path: str = './'
 ):
     #
     data = Data().adata2gdata(
         adata,
-        y=adata.obs[agglabel_col].values + 1,
+        y=adata.obs[agglabel_col].values + 1, # NOTE
         trn_mask=adata.obs['train_mask'].values,
         val_mask=adata.obs['val_mask'].values)
     data_loader = Data().gdata2batch(
@@ -363,94 +399,217 @@ def train_model(
     model = GAT(
         in_channels=adata.X.shape[1], out_channels=64, num_class=3, heads=4)
 
-    best_model = Trainer(model=model, device='cuda').train(
+    best_model = Trainer(model=model, device=device).train(
         trn_data_loader=data_loader, data_val=data, val_data_loader=None,
         max_epoch=100, lr=1e-3, lr_decay=[2, 0.5], early_stopping=10, weight_decay=1e-3, # NOTE
-        class_weight=[1, 1, 1])
+        class_weight=[1, 1, 1], plot_training_curve=plot_training_curve)
     model = best_model
 
-    torch.save(model.state_dict(), './trained_model.pt')
+    if save:
+        torch.save(model.state_dict(), './trained_model.pt')
 
     return model
 
 
-def custrom_train(
+def custom_train(
     adata: sc.AnnData,
     subid_col: str,
     cond_col: str,
     pos_cond: str,
     neg_cond: str,
     sex_col: str = None,
+    subsample: bool = True,
+    subsample_num: str = None,
     subsample_mode: str = 'top',
+    da_methods: List[str] = ['milo', 'meld', 'daseq'],
+    device: Union[str, torch.device] = 'cpu',
     val_mask_mode: str = 'cell',
-    build_whole_graph: bool = False
+    graph_build_use_rep: str = 'X_pca',
+    batch_size: int = 128,
+    num_parts: int = 2048
 ):
     r"""
+    Training from sratch with custom options, including running DA and RRA.
+
     Args:
-        adata (sc.AnnData): adata.X must not be scaled yet.
-        subid_col: str
-        cond_col: str
-        pos_cond: str
-        neg_cond: str
+        - adata: AnnData object.
+        - subid_col: Column name of the subject ID.
+        - cond_col: Column name of the condition.
+        - pos_cond: Positive condition.
+        - neg_cond: Negative condition.
+        - sex_col: Column name of sex.
+        - subsample_mode: 'top' or 'random'.
+        - da_methods: List of DA methods to use.
+        - val_mask_mode: 'donor' or 'cell'.
+        - batch_size: Batch size for training.
+        - graph_build_use_rep: Representation to use for building the graph. Default is 'X_pca'.
+        - num_parts: Number of parts for clustering.
     """
 
-    # subsampled with GAT
-    dinfo = subject_info(adata.obs, subid_col, columns=[cond_col])
-    min_num = dinfo[cond_col].value_counts().min()
-    subsample_num = f"{min_num}:{min_num}"
-    adata_pac = subsample_donors(
-        adata=adata,
-        subsample_num=subsample_num,
-        donor_col=subid_col,
-        cond_col=cond_col,
-        pos_cond=pos_cond,
-        neg_cond=neg_cond,
-        sex_col=sex_col,
-        mode=subsample_mode,
-    )
-    ## build graph
-    sc.pp.scale(adata_pac)
-    sc.pp.pca(adata_pac)
-    adata_pac = build_graph(adata=adata_pac)
-    ## run DA to get aggregated labels
-    adata_pac.obs['rra_pac'] = agglabel(
-        adata_pac,
-        subid_col,
-        cond_col,
-        pos_cond,
-        neg_cond,
-        methods=['milo', 'meld', 'daseq'], # NOTE
-    )
-    ## assign DA res and agg. labels back to adata
-    adata.obs.loc[adata_pac.obs.index, 'subsampled_milo'] = adata_pac.obs['milo'].values
-    adata.obs.loc[adata_pac.obs.index, 'subsampled_meld'] = adata_pac.obs['meld'].values
-    adata.obs.loc[adata_pac.obs.index, 'subsampled_daseq'] = adata_pac.obs['daseq'].values
-    adata.obs.loc[adata_pac.obs.index, 'subsampled_rra_pac'] = adata_pac.obs['rra_pac'].values
-    ## get val_mask
-    adata_pac.obs['val_mask'] = get_val_mask(
-        adata=adata_pac,
+    if subsample:
+        sc.pp.scale(adata) # NOTE normally we expect the data to have already been scaled, but in case it's not, we scale it here before running PCA. If already scaled, this will have no effect.
+        build_graph(adata, use_rep=graph_build_use_rep)
+        ## subsample data
+        if subsample_num is None:
+            dinfo = subject_info(adata.obs, subid_col, columns=[cond_col])
+            min_num = dinfo[cond_col].value_counts().min()
+            subsample_num = f"{min_num}:{min_num}"
+        adata_sub = subsample_donors(
+            adata=adata,
+            subsample_num=subsample_num,
+            subid_col=subid_col,
+            cond_col=cond_col,
+            pos_cond=pos_cond,
+            neg_cond=neg_cond,
+            sex_col=sex_col,
+            mode=subsample_mode,
+        )
+        adata.obs['subsampled'] = adata.obs.index.isin(adata_sub.obs.index)
+        ## build graph
+        build_graph(adata=adata_sub, use_rep=graph_build_use_rep)
+        ## run DA to get aggregated labels
+        agglabel(
+            adata_sub,
+            subid_col,
+            cond_col,
+            pos_cond,
+            neg_cond,
+            da_methods=da_methods
+        )
+        ## assign DA res and agg. labels back to adata
+        for method in da_methods:
+            adata.obs.loc[adata_sub.obs.index, f'subsampled_{method}'] = adata_sub.obs[method].values
+        adata.obs.loc[adata_sub.obs.index, 'subsampled_aggreg_label'] = adata_sub.obs['aggreg_label'].values
+        ## get val_mask
+        get_val_mask(
+            adata=adata_sub,
+            subid_col=subid_col,
+            cond_col=cond_col,
+            pos_cond=pos_cond,
+            neg_cond=neg_cond,
+            aggreg_label_col='aggreg_label',
+            sex_col=sex_col,
+            mode=val_mask_mode
+        )
+        adata.obs['val_mask'] = adata.obs.index.isin(
+            adata_sub.obs[adata_sub.obs['val_mask']].index)
+        adata.obs['train_mask'] = adata.obs.index.isin(
+            adata_sub.obs[adata_sub.obs['train_mask']].index)
+        model = train_model(
+            adata,
+            agglabel_col='subsampled_aggreg_label',
+            batch_size=batch_size,
+            num_parts=num_parts,
+            device=device
+        )
+    else:
+        ## build graph
+        sc.pp.scale(adata) # NOTE normally we expect the data to have already been scaled, but in case it's not, we scale it here before running PCA. If already scaled, this will have no effect.
+        build_graph(adata=adata, use_rep=graph_build_use_rep)
+        ## run DA to get aggregated labels
+        agglabel(
+            adata,
+            subid_col,
+            cond_col,
+            pos_cond,
+            neg_cond,
+            da_methods=da_methods
+        )
+        ## get val_mask
+        get_val_mask(
+            adata=adata,
+            subid_col=subid_col,
+            cond_col=cond_col,
+            pos_cond=pos_cond,
+            neg_cond=neg_cond,
+            aggreg_label_col='aggreg_label',
+            sex_col=sex_col,
+            mode=val_mask_mode
+        )
+        ## train GAT
+        model = train_model(
+            adata,
+            agglabel_col='aggreg_label',
+            batch_size=batch_size,
+            num_parts=num_parts,
+            device=device
+        )
+
+    return model
+
+
+def score(
+    adata: sc.AnnData,
+    subid_col: str,
+    cond_col: str,
+    pos_cond: str,
+    neg_cond: str,
+    sex_col: str = None,
+    subsample: bool = True,
+    subsample_num: str = None,
+    subsample_mode: str = 'top',
+    da_methods: List[str] = ['milo', 'meld', 'daseq'],
+    device: Union[str, torch.device] = 'cpu',
+    val_mask_mode: str = 'cell',
+    graph_build_use_rep: str = 'X_pca',
+    batch_size: int = 128,
+    num_parts: int = 2048        
+):
+    r"""
+    Auto scoring function for PAC. 
+    This automates every step from subsampling to training and scoring.
+    Not recommended for users who want to control certain steps during the process (see tutorial for examples).
+
+    Args:
+        - adata: AnnData object.
+        - subid_col: Column name of the subject ID.
+        - cond_col: Column name of the condition.
+        - pos_cond: Positive condition.
+        - neg_cond: Negative condition
+        - sex_col: Column of sex.
+        - subsample_mode: 'top' or 'random'.
+        - da_methods: List of DA methods to use.
+        - val_mask_mode: 'donor' or 'cell'.
+        - batch_size: Batch size for training.
+        - graph_build_use_rep: Representation to use for building the graph. Default is 'X_pca'.
+        - num_parts: Number of parts for clustering.
+    """
+    model = custom_train(
+        adata=adata, 
         subid_col=subid_col,
         cond_col=cond_col,
         pos_cond=pos_cond,
         neg_cond=neg_cond,
         sex_col=sex_col,
-        mode=val_mask_mode
+        subsample=subsample,
+        subsample_num=subsample_num,
+        subsample_mode=subsample_mode,
+        da_methods=da_methods,
+        device=device,
+        val_mask_mode=val_mask_mode,
+        graph_build_use_rep=graph_build_use_rep,
+        batch_size=batch_size,
+        num_parts=num_parts
     )
-    adata.obs['val_mask'] = adata.obs.index.isin(
-        adata_pac.obs[adata_pac.obs['val_mask']].index)
-    adata.obs['train_mask'] = adata.obs.index.isin(
-        adata_pac.obs[adata_pac.obs['train_mask']].index)
-    ## train GAT
-    if build_whole_graph:
-        sc.pp.scale(adata)
-        sc.pp.pca(adata)
-        adata = build_graph(adata=adata)
-    agglabel_col = 'subsampled_rra_pac'
-    model = train_model(
-        adata,
-        agglabel_col,
-        batch_size=1, # NOTE
-        num_parts=1 # NOTE
-    )
+    adata.obs['PAC_score'] = model.predict(adata)
+    return adata.obs['PAC_score'].values
+
+def load_model(
+        state_dict_path: str,
+        in_channels: int = 3401,
+        out_channels: int = 64,
+        num_class: int = 3,
+        heads: int = 4,
+        drop_rate: float = 0.0,
+    ):
+    state_dict = torch.load(state_dict_path)
+    model = GAT(
+        in_channels=in_channels,
+        out_channels=out_channels,
+        num_class=num_class,
+        heads=heads,
+        drop_rate=drop_rate)
+    model.load_state_dict(state_dict, strict=True)
     return model
+
 

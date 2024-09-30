@@ -3,21 +3,28 @@
 # Function version of building graph
 ###############################################################################
 import time
-import warnings
-from numba.core.errors import NumbaDeprecationWarning
-from tqdm import TqdmWarning
-warnings.filterwarnings("ignore", category=NumbaDeprecationWarning)
-warnings.filterwarnings("ignore", category=TqdmWarning)
 import scanpy as sc
 
 def build_graph(
     adata,
     use_rep='X_pca',
     run_umap=True,
-    n_pcs=50,
 ):
+    r"""
+    Assuming adata has been preprocessed (including standard scaling) with adata.X as the expression matrix.
+    If the input data is not a subsampled dataset, we recommend running PCA first.
+    Otherwise, you can directly use the precomputed PCA results.
+
+    Args:
+        adata (AnnData): Annotated data matrix.
+        use_rep (str, optional): The representation to use for building graph. Default: 'X_pca'.
+        run_neighbors_for_subsampled_data (bool, optional): Whether to run neighbors for subsampled data. Default: True.
+        run_umap (bool, optional): Whether to run umap. Default: True.
+    """
     if use_rep == 'X_pca':
         if 'X_pca' not in adata.obsm.keys():
+            print("Scaling data...")
+            sc.pp.scale(adata)
             print("Running PCA...")
             sc.pp.pca(adata)
         else:
@@ -27,18 +34,17 @@ def build_graph(
             f"Error: use_rep {use_rep} not in adata.obsm.keys()."
         print(f"Using {use_rep} as rep...")
 
-    print("Builidng graph...")
-    st = time.time()
-    sc.pp.neighbors(adata, n_pcs=n_pcs, use_rep=use_rep) # default is 50 PCs
-    print("Building graph time cost (s): ", time.time() - st)
+    if ('neighbors' not in adata.uns.keys()) or ('connectivities' not in adata.obsp.keys()):
+        print("Builidng graph...")
+        st = time.time()
+        sc.pp.neighbors(adata, use_rep=use_rep) # default is 50 PCs
+        print(f"Building graph time cost (s): {(time.time() - st):2f}.")
 
     if run_umap:
         print("Running umap...")
         st = time.time()
         sc.tl.umap(adata)
-        print("Umap time cost (s): ", time.time() - st)
-
-    return adata
+        print(f"Umap time cost (s): {(time.time() - st):2f}")
 
 # #%%
 # ###############################################################################
