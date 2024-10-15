@@ -1,0 +1,16 @@
+numpy==1.26.4
+scipy==1.14.1
+scanpy==1.10.2
+anndata==0.10.3
+torch==2.3.0
+https://data.pyg.org/whl/torch-2.3.0%2Bcpu/torch_scatter-2.1.2%2Bpt23cpu-cp310-cp310-win_amd64.whl
+https://data.pyg.org/whl/torch-2.3.0%2Bcpu/torch_sparse-0.6.18%2Bpt23cpu-cp310-cp310-win_amd64.whl
+torch_geometric==2.3.1
+pandas==2.0.3
+multianndata==0.0.4
+matplotlib==3.9.1
+seaborn==0.13.2
+scikit-learn==1.5.2
+cna==0.1.6
+meld==1.0.2
+rpy2==3.5.16
