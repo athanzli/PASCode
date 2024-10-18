@@ -82,7 +82,7 @@ pip install https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_sparse-0.6.18%2Bp
 
 ## Quick start
 
-Note that this quick score function may not suit all scenarios due to its fixed settings over every step.
+Note that this score function may not suit all scenarios due to its fixed settings over every step.
 
 Users are advised to refer to our tutorials (**Tutorial_PASCode-RRA.ipynb**, **Tutorial_PASCode-ScorePrediction.ipynb**) for more controls over the process to best utilize PASCode for their own purposes (e.g., donor subsampling approach, DA tool options and parameters, GAT training, etc.).
 
