@@ -57,7 +57,7 @@ class GAT(torch.nn.Module):
 
     def predict(self, data, device='cpu'):
         r"""
-        Predicts PAC scores for the given data.
+        Predict PAC scores for the given data.
 
         Args:
             - data: PyTorch Geometric Data object.
@@ -86,16 +86,14 @@ class Data:
         """
         Converts an AnnData object to a PyTorch Geometric Data object.
 
-        Parameters:
-        - adata (anndata.AnnData): The input AnnData object that contains the data matrix and the graph connectivity.
-        - y (np.ndarray or None): Target labels array. If None, 'y' will not be included in the returned data object.
-        - trn_mask (np.ndarray, optional): A boolean mask indicating which samples are used for training. 
+        Args:
+        adata (anndata.AnnData): contains the data matrix and the graph connectivity.
+        y (np.ndarray or None): target labels 1D array. If None, y will not be included in the returned data object.
+        trn_mask (np.ndarray, optional): A boolean mask indicating which samples are used for training. 
                                           If None, 'train_mask' will not be included in the returned data object.
-        - val_mask (np.ndarray, optional): A boolean mask indicating which samples are used for validation. 
+        val_mask (np.ndarray, optional): A boolean mask indicating which samples are used for validation. 
                                           If None, 'val_mask' will not be included in the returned data object.
 
-        Returns:
-        - data (torch_geometric.data.Data): A PyTorch Geometric Data object.
         """
 
         if 'connectivities' not in adata.obsp:
@@ -125,14 +123,12 @@ class Data:
         """
         Constructs batches from the given PyTorch Geometric Data object using ClusterGCN (https://arxiv.org/abs/1905.07953).
 
-        Parameters:
-        - data (torch_geometric.data.Data): The input PyTorch Geometric Data object.
-        - batch_size (int, optional): The batch size. Default is 128.
-        - num_parts (int, optional): The number of parts for clustering. Default is 128*16.
-        - shuffle (bool, optional): Whether to shuffle the data. Default is True.
+        Args:
+        num_parts (int, optional): The number of parts for clustering. Default is 128*16.
+        shuffle (bool, optional): Whether to shuffle the data. Default is True.
 
         Returns:
-        - data_loader (torch_geometric.loader.ClusterLoader): A PyTorch Geometric ClusterLoader containing the batches.
+        data_loader (torch_geometric.loader.ClusterLoader)
         """
         print('Constructing batches...')
         # NOTE https://github.com/pyg-team/pytorch_geometric/discussions/7866#discussioncomment-7970609
@@ -233,20 +229,12 @@ class Trainer:
         """
         Trains a given PyTorch model using the provided data loaders and training parameters.
         
-        Parameters:
-        - model: A PyTorch module representing the neural network model.
-        - trn_data_loader: Training data loader.
-        - data_val: Optional validation data tensor.
-        - val_data_loader: Optional validation data loader.
-        - max_epoch: Maximum training epochs.
-        - lr: Learning rate.s
-        - weight_decay: Weight decay for optimizer.
-        - early_stopping: Number of epochs for early stopping.
-        - device: Device type (e.g., 'cpu', 'cuda').
-        - class_weight: Class weights for the loss function.
+        Args:
+        trn_data_loader: Training data loader.
+        data_val (Optional): validation data tensor.
+        val_data_loader (Optional): validation data loader.
+        early_stopping: patience for early stopping.
         
-        Returns:
-        - Trained model (best model if validation data is provided, otherwise the model at the last epoch).
         """
         best_model = copy.deepcopy(self.model)
         best_model.load_state_dict(self.model.state_dict())
@@ -313,15 +301,9 @@ def get_val_mask(
     Make sure 'aggre_label' is in adata.obs.
 
     Args:
-        - adata: AnnData object.
-        - subid_col: Column name of the subject ID.
-        - cond_col: Column name of the condition.
-        - pos_cond: Positive condition.
-        - neg_cond: Negative condition
-        - sex_col: Column name of sex.
-        - mode: 'donor' or 'cell'. If donor, the validation mask will be created based on the donors.
+        mode: 'donor' or 'cell'. If donor, the validation mask will be created based on the donors.
                 If cell, the validation mask will be created based on the cells.
-        - val_percent: The percentage of validation samples. Default is 0.1.
+        val_percent: The percentage of validation samples. Default is 0.1.
     """
     if mode == 'donor':
         if sex_col is not None:
@@ -432,18 +414,11 @@ def custom_train(
     Training from sratch with custom options, including running DA and RRA.
 
     Args:
-        - adata: AnnData object.
-        - subid_col: Column name of the subject ID.
-        - cond_col: Column name of the condition.
-        - pos_cond: Positive condition.
-        - neg_cond: Negative condition.
-        - sex_col: Column name of sex.
-        - subsample_mode: 'top' or 'random'.
-        - da_methods: List of DA methods to use.
-        - val_mask_mode: 'donor' or 'cell'.
-        - batch_size: Batch size for training.
-        - graph_build_use_rep: Representation to use for building the graph. Default is 'X_pca'.
-        - num_parts: Number of parts for clustering.
+        subsample_mode: 'top' or 'random'.
+        da_methods: List of DA methods to use.
+        val_mask_mode: 'donor' or 'cell'.
+        graph_build_use_rep: Default is 'X_pca'.
+        num_parts: Number of parts for clustering.
     """
 
     if subsample:
@@ -561,18 +536,11 @@ def score(
     Not recommended for users who want to control certain steps during the process (see tutorial for examples).
 
     Args:
-        - adata: AnnData object.
-        - subid_col: Column name of the subject ID.
-        - cond_col: Column name of the condition.
-        - pos_cond: Positive condition.
-        - neg_cond: Negative condition
-        - sex_col: Column of sex.
-        - subsample_mode: 'top' or 'random'.
-        - da_methods: List of DA methods to use.
-        - val_mask_mode: 'donor' or 'cell'.
-        - batch_size: Batch size for training.
-        - graph_build_use_rep: Representation to use for building the graph. Default is 'X_pca'.
-        - num_parts: Number of parts for clustering.
+        subsample_mode: 'top' or 'random'.
+        da_methods: List of DA methods to use.
+        val_mask_mode: 'donor' or 'cell'.
+        graph_build_use_rep: Default is 'X_pca'.
+        num_parts: Number of parts for clustering.
     """
     model = custom_train(
         adata=adata, 

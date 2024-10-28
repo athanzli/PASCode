@@ -165,8 +165,7 @@ def run_milo(adata, subid_col, cond_col, pos_cond, neg_cond,
 def run_meld(adata, cond_col, pos_cond, neg_cond, beta=10, knn=15, use_rep='X_pca'):
     r"""
     According to the package documentation and source code, beta = 60 and knn = 5 are default parameter setting.
-    However, we found that beta=10 and knn=15 lead to much more accurate and robust results for our datasets.
-    We therefore recommend using beta=10 and knn=15 for most datasets.
+    However, for our datasets, we found that beta=10 and knn=15 lead to much more accurate and robust results.
     """
     # if anndata does not have X_pca then run PCA using scanpy
     if use_rep not in adata.obsm.keys():
