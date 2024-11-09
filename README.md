@@ -1,5 +1,7 @@
 # Phenotype Associated Single Cell encoder (PASCode)
 
+Check out our paper [*Phenotype Scoring of Population Scale Single-Cell Data Dissects Alzheimer's Disease Complexity*](https://www.medrxiv.org/content/10.1101/2024.11.01.24316586v1).
+
 Phenotype Associated Single Cell encoder (PASCode) is a deep learning framework for phenotype scoring of single cells. PASCode ensembles multiple Differential Abundance (DA) tools through a Robust Rank Aggregation (RRA) algorithm, and uses a graph attention network (GAT) to robustly and accurately annotate phenotype associated cell (PAC) scores for single cells. Given single-cell sequencing data and a contrastive pair of phenotypic labels (e.g., disease vs. control), PASCode outputs PAC scores for each cell. PASCode not only outperforms individual DA tools but also can predict PAC scores for individuals with unknown phenotype labels.
 
 PASCode integrates existing DA tools, the RRA algorithm, and a trainable GAT model for PAC score annotation. PASCode offers a straighforward interface for easy access to these tools, all in the python environment. PASCode simplifies the usage of DA tools, RRA, and the GAT model by providing unified function calls, enabling DA analysis with standardized inputs and outputs.
@@ -114,3 +116,7 @@ sc.pl.umap(adata, color=['PAC_score', 'phenotype', 'celltype'])
 Demo running time (including running Milo, MELD, DAseq, and traininig GAT model): 3min.
 
 PASCode running time can vary across systems and various use cases, users are advised to follow our tutorials (*Tutorial_PASCode-RRA.ipynb*, *Tutorial_PASCode-ScorePrediction.ipynb*) to understand how to customize their PAC scoring process efficiently and accurately.
+
+## Reference
+
+Chenfeng He, Athan Z. Li, Kalpana Hanthanan Arachchilage, Chirag Gupta, Xiang Huang, Xinyu Zhao, PsychAD Consortium, Kiran Girdhar, Georgios Voloudakis, Gabriel E. Hoffman, Jaroslav Bendl, John F. Fullard, Donghoon Lee, Panos Roussos,  Daifeng Wang. *Phenotype Scoring of Population Scale Single-Cell Data Dissects Alzheimer's Disease Complexity*. doi: https://doi.org/10.1101/2024.11.01.24316586.
