@@ -2,7 +2,7 @@
 
 Phenotype Associated Single Cell encoder (PASCode) is a deep learning framework for phenotype scoring of single cells. PASCode ensembles multiple Differential Abundance (DA) tools through a Robust Rank Aggregation (RRA) algorithm, and uses a graph attention network (GAT) to robustly and accurately annotate phenotype associated cell (PAC) scores for single cells. Given single-cell sequencing data and a contrastive pair of phenotypic labels (e.g., disease vs. control), PASCode outputs PAC scores for each cell. PASCode not only outperforms individual DA tools but also can predict PAC scores for individuals with unknown phenotype labels.
 
-PASCode integrates existing DA tools, the RRA algorithm, and a trainable GAT model for PAC score annotation. PASCode offers a straighforward interface for easy access to these tools, all in the python environment. PASCode simplifies the usage of DA tools, RRA, and the GAT model by providing unified function calls, enabling DA analysis with standardized inputs and outputs.
+PASCode integrates existing DA tools, the RRA algorithm, and a trainable GAT model for PAC score annotation. PASCode offers a straightforward interface for easy access to these tools, all in the python environment. PASCode simplifies the usage of DA tools, RRA, and the GAT model by providing unified function calls, enabling DA analysis with standardized inputs and outputs.
 
 ![flowchart](./images/flowchart.png)
 
