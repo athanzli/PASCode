@@ -69,16 +69,9 @@ pip install -r requirements.txt
 ```
 
 #### Note:
-The user may run into errors regarding *sparse tensor*. This is an existing issue (see https://github.com/pyg-team/pytorch_geometric/discussions/7866#discussioncomment-7970609) with the installation of PyG. In *requirements.txt*, we provided the wheel links to *torch_scatter* and *torch_sparse* to facilitate smooth installation, but that is for torch version 2.3.0 with CPU only.
+The user may run into errors regarding *sparse tensor*. This is an existing issue (see https://github.com/pyg-team/pytorch_geometric/discussions/7866#discussioncomment-7970609) with the installation of PyG.
 
-To install *torch*, *torch-scatter*, *torch-sparse* for cuda, follow PyTorch installation guide and look for the corresponding wheel in https://data.pyg.org/whl/
-
-For instance, the following commands install *torch-scatter* and *torch-sparse* with *torch-2.3.0*, *python version 3.10*, *cuda version 12.1* on a *linux* machine.
-```
-pip install https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_scatter-2.1.2%2Bpt23cu121-cp310-cp310-linux_x86_64.whl
-
-pip install https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_sparse-0.6.18%2Bpt23cu121-cp310-cp310-linux_x86_64.whl
-```
+Also, in *requirements.txt*, we provided two wheel links to *torch_scatter* and *torch_sparse* to facilitate smooth installation, but those are compatible with the following settings only: *torch-2.3.0*, *python version 3.10*, *cuda version 12.1* on a *linux* machine. For compatibility with your local settings, look for corresponding links from https://data.pyg.org/whl/ and replace them in *requirements.txt*.
 
 ## Quick start
 
