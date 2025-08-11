@@ -1,12 +1,8 @@
 # Phenotype Associated Single Cell encoder (PASCode)
 
-Phenotype Associated Single Cell encoder (PASCode) is a deep learning framework for phenotype scoring of single cells. PASCode ensembles multiple Differential Abundance (DA) tools through a Robust Rank Aggregation (RRA) algorithm, and uses a graph attention network (GAT) to robustly and accurately annotate phenotype associated cell (PAC) scores for single cells. Given single-cell sequencing data and a contrastive pair of phenotypic labels (e.g., disease vs. control), PASCode outputs PAC scores for each cell. PASCode not only outperforms individual DA tools but also can predict PAC scores for individuals with unknown phenotype labels.
-
-PASCode integrates existing DA tools, the RRA algorithm, and a trainable GAT model for PAC score annotation. PASCode offers a straightforward interface for easy access to these tools, all in the python environment. PASCode simplifies the usage of DA tools, RRA, and the GAT model by providing unified function calls, enabling DA analysis with standardized inputs and outputs.
+Phenotype Associated Single Cell encoder (PASCode) is a computational framework for phenotype scoring at the single-cell level. It integrates multiple differential abundance (DA) methods through an ensemble approach and leverages a graph attention network (GAT) to predict single-cell phenotype association scores (PAC scores). Given single-cell sequencing data and a contrastive phenotypic label pair (e.g., disease vs. control), PASCode infers a PAC score for each cell, outperforming individual DA tools. PASCode combines existing DA methods, the Robust Rank Aggregation (RRA) algorithm, and a trainable GAT model into a unified Python interface. By standardizing inputs and outputs, it streamlines DA analysis and simplifies access to these tools through consistent function calls.
 
 ![flowchart](./images/flowchart.png)
-
-Users are advised to refer to our tutorials (*Tutorial_PASCode-RRA.ipynb*, *Tutorial_PASCode-ScorePrediction.ipynb*) for usage of PASCode, and understand how to best utilize PASCode for their own purposes (e.g., donor subsampling approach, DA tool options and parameters, GAT training, etc.).
 
 ## System requirements and dependencies
 The code has been tested on Ubuntu 20.04 and Windows 12 with the following dependencies:
@@ -73,40 +69,137 @@ The user may run into errors regarding *sparse tensor*. This is an existing issu
 
 Also, in *requirements.txt*, we provided two wheel links to *torch_scatter* and *torch_sparse* to facilitate smooth installation, but those are compatible with the following settings only: *torch-2.3.0*, *python version 3.10*, *cuda version 12.1* on a *linux* machine. For compatibility with your local settings, look for corresponding links from https://data.pyg.org/whl/ and replace them in *requirements.txt*.
 
-## Quick start
-
-Note that this score function may not suit all scenarios due to its fixed settings over every step.
-
-Users are advised to refer to our tutorials (**Tutorial_PASCode-RRA.ipynb**, **Tutorial_PASCode-ScorePrediction.ipynb**) for more controls over the process to best utilize PASCode for their own purposes (e.g., donor subsampling approach, DA tool options and parameters, GAT training, etc.).
+## Usage guide
+### Step 1: Input data format
+The input data should be in \href{https://anndata.readthedocs.io/en/stable/}{anndata} format, with expression data in *anndata.X* and sample-level information in *anndata.obs*. Specifically:
 
 ```python
-import PASCode
 import scanpy as sc
+adata = sc.read_h5ad('./data/synth_data_2v6.h5ad')
+print(adata)
+```
 
-adata = sc.read_h5ad('./data/synth_demo_2v6.h5ad')
+```python
+print(adata.X)
+print(adata.X.shape)
+```
 
-# specify column names for subject ID and condition, and positive/negative conditions
-subid_col = 'subject_id' 
-cond_col = 'phenotype'
-pos_cond = 'cond1'
-neg_cond = 'cond2'
+```python
+print(adata.obs)
+```
 
-PASCode.model.score(
+Make sure adata.obs has at least the following two columns:
+1. a *subject ID* column
+2. a *condition* column, indicating either a positive condition (e.g., AD) or a negative condition (e.g., Control) for the subject.
+
+We can take a look at subject-level information w.r.t. any subject-level labels of interest, together with subject ID:
+
+```python
+subid_col = 'Donor ID' # specify the column name for subject IDs
+import PASCode
+dinfo = PASCode.utils.subject_info(
+    d.obs,
+    subid_col=subid_col,
+    columns=['Sex','Braak'] # e.g. count donor numbers for sex and braak stages 
+)
+print(dinfo)
+```
+
+
+
+### Step 2: Balance donor numbers
+
+DA methods are more accurate for balanced donor numbers between the positive condition (n1) and negative condtion (n2). Unless n1 and n2 are extremely close, subsampling is almost always recommended to avoid accuracy loss.
+
+```python
+"""
+This function will automatically subsample to the minimum number of subjects in the two conditions.
+"""
+adata0 = adata.copy() # adata0 will be used for complete PAC score annotation using GAT later in Step 4
+adata = PASCode.utils.subsample_donors(
     adata=adata,
     subid_col=subid_col,
     cond_col=cond_col,
     pos_cond=pos_cond,
     neg_cond=neg_cond,
+    sex_col=None, # Specify the column name for sex_col in adata.obs to also account for sex balance.
+    mode='top' # Keep subjects with the largest number of cells
 )
-
-sc.pl.umap(adata, color=['PAC_score', 'phenotype', 'celltype'])
 ```
 
-![demo_plot](./images/demo_plot.png)
+Before donor subsampling:
+phenotype
+cond2    6
+cond1    2
+Name: count, dtype: int64
+'subsample_num' not provided. Automatically subsample to the minimum number of subjects in the two conditions.
+Donor subsampling:  2:2
+After donor subsampling:
+phenotype
+cond2    2
+cond1    2
+Name: count, dtype: int64
 
-Demo running time (including running Milo, MELD, DAseq, and traininig GAT model): 3min.
+### Step 3: Run DA methods
 
-PASCode running time can vary across systems and various use cases, users are advised to follow our tutorials (*Tutorial_PASCode-RRA.ipynb*, *Tutorial_PASCode-ScorePrediction.ipynb*) to understand how to customize their PAC scoring process efficiently and accurately.
+```python
+# Specify positive and negative condition names in condition column
+pos_cond = 'cond1'
+neg_cond = 'cond2'
+
+adata.obs['aggreg_label'] = PASCode.da.agglabel(
+    adata,
+    subid_col,
+    cond_col,
+    pos_cond,
+    neg_cond
+)
+```
+
+### Step 4: GAT for annotating PAC scores
+
+```python
+# We must transfer the aggregated labels from the subsampled dataset back to the original dataset.
+adata.obs.loc[adata_sub.obs.index, 'aggreg_label'] = adata_sub.obs['aggreg_label']
+
+# Prepare Training and Validation Masks
+PASCode.model.get_val_mask(
+    adata_sub, 
+    subid_col=subid_col,
+    cond_col=cond_col,
+    pos_cond=pos_cond,
+    neg_cond=neg_cond
+)
+
+# Assign masks to the original dataset
+adata.obs['val_mask'] = adata.obs.index.isin(
+    adata_sub.obs[adata_sub.obs['val_mask']].index
+)
+adata.obs['train_mask'] = adata.obs.index.isin(
+    adata_sub.obs[adata_sub.obs['train_mask']].index
+)
+
+# train model
+model = PASCode.model.train_model(
+    adata=adata,
+    agglabel_col='aggreg_label',
+    device='cuda:0' # NOTE change accordingly
+)
+
+# predict pac score
+adata.obs['PAC_score'] = model.predict(adata)
+
+sc.tl.umap(adata)
+sc.pl.umap(adata, color=['PAC_score', 'phenotype', 'celltype'])
+
+```
+![alt text](image.png)
+
+Toy data total running time (including running Milo, MELD, DAseq, and traininig GAT model): 3min.
+
+PASCode running time can vary across systems and various use cases. 
+
+Except for the above simple usage guide, we provide tutorials (*Tutorial_PASCode-RRA.ipynb*, *Tutorial_PASCode-ScorePrediction.ipynb*) to guide users for more customizations. Users can refer to these two tutorials for more customized, efficient, and accurate PAC scoring.
 
 ## Reference
 
