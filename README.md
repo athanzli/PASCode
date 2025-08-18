@@ -1,61 +1,73 @@
 # Phenotype Associated Single Cell encoder (PASCode)
 
-Phenotype Associated Single Cell encoder (PASCode) is a computational framework for phenotype scoring at the single-cell level. It integrates multiple differential abundance (DA) methods through an ensemble approach and leverages a graph attention network (GAT) to predict single-cell phenotype association scores (PAC scores). Given single-cell sequencing data and a contrastive phenotypic label pair (e.g., disease vs. control), PASCode infers a PAC score for each cell, outperforming individual DA tools. PASCode combines existing DA methods, the Robust Rank Aggregation (RRA) algorithm, and a trainable GAT model into a unified Python interface. By standardizing inputs and outputs, it streamlines DA analysis and simplifies access to these tools through consistent function calls.
+Phenotype Associated Single Cell encoder (PASCode) is a computational framework for phenotype scoring at the single-cell level. It integrates multiple differential abundance (DA) methods through an ensemble approach and leverages a graph attention network (GAT) to predict phenotype association scores for phenotype associated cells(PAC scores). Given single-cell sequencing data and a contrastive phenotypic label pair (e.g., disease vs. control), PASCode infers a PAC score for each cell, outperforming individual DA methods. PASCode combines existing DA methods, the Robust Rank Aggregation (RRA) algorithm, and trainable GAT models into unified Python-based interface. By standardizing inputs and outputs, it streamlines DA analysis by simplifying the running of these methods via user-friendly function calls.
 
 ![flowchart](./images/flowchart.png)
 
 ## System requirements and dependencies
-The code has been tested on Ubuntu 20.04 and Windows 12 with the following dependencies:
+The code has been tested on Ubuntu 20.04 and Windows 12 with the following dependencies
 
+Python version (**Note:** potential version issues may arise if using python>=3.13; we recommend installing PASCode in a new environment with the following tested python version)
+```
 python==3.10.12
-
-numpy==1.26.4\
-scipy==1.14.1\
-scanpy==1.10.2\
-pandas==2.0.3\
-anndata==0.10.3\
-multianndata==0.0.4\
-matplotlib==3.9.1\
-seaborn==0.13.2\
-cna==0.1.6\
-meld==1.0.2\
-rpy2==3.5.16\
-torch==2.3.0\
-torch_scatter=2.1.2\
-torch_sparse=0.6.18\
-torch_geometric==2.3.1\
+```
+Python packages
+```
+numpy==1.26.4
+scipy==1.14.1
+scanpy==1.10.2
+pandas==2.0.3
+anndata==0.10.3
+multianndata==0.0.4
+matplotlib==3.9.1
+seaborn==0.13.2
+cna==0.1.6
+meld==1.0.2
+rpy2==3.5.16
+torch==2.3.0
+torch_scatter=2.1.2
+torch_sparse=0.6.18
+torch_geometric==2.3.1
 scikit-learn==1.5.2
-
-#### Note:
-Current PASCode is built upon the following R package / DA methods versions:
-
-Milo: milopy github repository as of Sep. 28 2024 \
-MELD: v1.0.2 \
-CNA: v0.1.6 \
-DAseq: v1.0.0 \
-RobustRankAggreg: v1.2.1 \
+```
+R packages / DA methods:
+```
+Milo: milopy github repository as of Sep. 28 2024 
+MELD: v1.0.2 
+CNA: v0.1.6 
+DAseq: v1.0.0 
+RobustRankAggreg: v1.2.1
 edgeR: v4.2.1
-
+```
 ## Installation
 
-PASCode is built upon existing DA tools and R packages, thus the user should install those tools (step 1) first before installing PASCode (step 2).
+PASCode is built upon existing DA methods and R packages, thus the user should install some of those methods (step 1) first before installing PASCode (step 2).
 
-### Step 1: Install DA tools and RRA (2~3 min)
+### Step 1: Install DA methods and RRA (2~3 min)
 
-- *RobustRankAggreg* must be installed for Robust Rank Aggregation (RRA) to get aggregated cell labels. **(R)**
+- The `RobustRankAggreg` R package must be installed for Robust Rank Aggregation (RRA) to get single-cell aggregated phenotype labels **(R)**. 
+    ```r
+    install.packages('RobustRankAggreg')
+    ```
+- `Milo` should be installed to be included in RRA **(Python)**.
 
-- *Milo* should be installed (follow instructions in https://github.com/emdann/milopy) if the user wants to include it in the RRA option. **(Python)**
+  Follow instructions in https://github.com/emdann/milopy
+  
+  **Note:** After we completed PASCode, the authors of Milo began maintaining the package elsewhere. For PASCode, we should use the version linked above.
 
-- *edgeR* must be installed in order to run **Milo**. **(R)**
+- `DAseq` should be installed to be included in RRA **(R)**.
 
-- *DAseq* should be installed (follow instructions in https://github.com/KlugerLab/DAseq) if the user wants to include it in the RRA option. **(R)**
+  Follow instructions in https://github.com/KlugerLab/DAseq
+
+- The rest of the DA methods will be installed automatically along with PASCode in step 2.
 
 ### Step 2: Install PASCode (2~3 min)
 
 After completing step 1:
 
-1) Download the PASCode repository from github either by downloading the repository zip file or using git commands:
+1) Download the PASCode repository from github, either by downloading the repository zip file or using git commands in a directory of interest:
 ```python
+git init
 git clone https://github.com/daifengwanglab/PASCode
 ```
 
@@ -69,9 +81,14 @@ The user may run into errors regarding *sparse tensor*. This is an existing issu
 
 Also, in *requirements.txt*, we provided two wheel links to *torch_scatter* and *torch_sparse* to facilitate smooth installation, but those are compatible with the following settings only: *torch-2.3.0*, *python version 3.10*, *cuda version 12.1* on a *linux* machine. For compatibility with your local settings, look for corresponding links from https://data.pyg.org/whl/ and replace them in *requirements.txt*.
 
+<!-- https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_scatter-2.1.2%2Bpt23cu121-cp310-cp310-linux_x86_64.whl
+
+https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_sparse-0.6.18%2Bpt23cu121-cp310-cp310-linux_x86_64.whl -->
+
+
 ## Usage guide
 ### Step 1: Input data format
-The input data should be in \href{https://anndata.readthedocs.io/en/stable/}{anndata} format, with expression data in *anndata.X* and sample-level information in *anndata.obs*. Specifically:
+The input data should be an [anndata](https://anndata.readthedocs.io/en/stable/) object, with expression data in `anndata.X` and subject-level information in `anndata.obs`. For example,
 
 ```python
 import scanpy as sc
@@ -89,7 +106,7 @@ print(adata.obs)
 ```
 
 Make sure adata.obs has at least the following two columns:
-1. a *subject ID* column
+1. a *subject ID* column for the IDs of subjects.
 2. a *condition* column, indicating either a positive condition (e.g., AD) or a negative condition (e.g., Control) for the subject.
 
 We can take a look at subject-level information w.r.t. any subject-level labels of interest, together with subject ID:
