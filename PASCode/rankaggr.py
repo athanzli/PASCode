@@ -3,6 +3,9 @@ import time
 import rpy2
 
 def _divide_scores(scores, score_col_num, op):
+    r"""A helper function for RRA. Handles positive and negative scores separately.
+    
+    """
     div_scores = None
     for i in range(score_col_num):
         col_name = 's' + str(i + 1)
@@ -20,8 +23,9 @@ def _divide_scores(scores, score_col_num, op):
     return div_scores
 
 def rra(adata, da_methods=['milo', 'meld', 'daseq']):
-    r"""
-    
+    r""" Run RRA for aggregating the results of the chosen DA methods.
+    Args:
+        adata (AnnData): AnnData object of the input data.
     Returns:
         Aggregated cell labels (adata.obs[aggreglabel_col].values).
     """

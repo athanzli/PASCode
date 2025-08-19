@@ -42,6 +42,21 @@ class GAT(torch.nn.Module):
         self.layers = torch.nn.ModuleList([self.conv1, self.conv2, self.conv3])
 
     def forward(self, data):
+        """
+        Args:
+            data (torch_geometric.data.Data): Graph with attributes
+                - x (torch.FloatTensor): Node features.
+                - edge_index (torch.LongTensor): COO edge indices.
+
+        Returns:
+            torch.FloatTensor: Per-node scores after the final ELU activation.
+            need to go through softmax externally.
+
+        Shape:
+            x: (N, in_channels)
+            edge_index: (2, E)
+            output: (N, num_class)
+        """
         x, edge_index = data.x, data.edge_index
         x = self.conv1(x, edge_index)
         x = torch.nn.functional.elu(x)
@@ -56,12 +71,20 @@ class GAT(torch.nn.Module):
             layer.reset_parameters()
 
     def predict(self, data, device='cpu'):
-        r"""
-        Predict PAC scores for the given data.
+        """Predict PAC scores for the given data.
 
         Args:
-            - data: PyTorch Geometric Data object.
-            - device: Device type (e.g., 'cpu', 'cuda').
+            data (torch_geometric.data.Data, anndata.AnnData): Graph/data to score.
+                If AnnData, it will be converted via Data.adata2gdata (without labels/masks).
+            device (str, torch.device): e.g. 'cpu' or 'cuda'.
+
+        Returns:
+            numpy.ndarray: PAC scores.
+
+        Shape:
+            input x: (N, in_channels)
+            input edge_index: (2, E)
+            output: (N,)
         """
         if not isinstance(data, torch_geometric.data.Data):
             print("Building PyTorch Geometric Data...")
@@ -87,13 +110,22 @@ class Data:
         Converts an AnnData object to a PyTorch Geometric Data object.
 
         Args:
-        adata (anndata.AnnData): contains the data matrix and the graph connectivity.
-        y (np.ndarray or None): target labels 1D array. If None, y will not be included in the returned data object.
-        trn_mask (np.ndarray, optional): A boolean mask indicating which samples are used for training. 
-                                          If None, 'train_mask' will not be included in the returned data object.
-        val_mask (np.ndarray, optional): A boolean mask indicating which samples are used for validation. 
-                                          If None, 'val_mask' will not be included in the returned data object.
+            adata (anndata.AnnData): contains the data matrix and the graph connectivity.
+            y (np.ndarray or None): target labels 1D array. If None, y will not be included in the returned data object.
+            trn_mask (np.ndarray, optional): A boolean mask indicating which samples are used for training. 
+                                            If None, 'train_mask' will not be included in the returned data object.
+            val_mask (np.ndarray, optional): A boolean mask indicating which samples are used for validation. 
+                                            If None, 'val_mask' will not be included in the returned data object.
+        Returns:
+            torch_geometric.data.Data: PyG Data
 
+        Shape:
+            adata.X: (N, F)
+            edge_index: (2, E) from connectivities
+            x: (N, F)
+            y: (N,)
+            train_mask/val_mask: (N,)
+            idx: (N,)
         """
 
         if 'connectivities' not in adata.obsp:
@@ -124,11 +156,23 @@ class Data:
         Constructs batches from the given PyTorch Geometric Data object using ClusterGCN (https://arxiv.org/abs/1905.07953).
 
         Args:
-        num_parts (int, optional): The number of parts for clustering. Default is 128*16.
-        shuffle (bool, optional): Whether to shuffle the data. Default is True.
+            data (torch_geometric.data.Data): the graph data.
+            batch_size (int): Number of clusters per loader batch.
+            num_parts (int, optional): The number of parts for clustering. Default is 128*16.
+            shuffle (bool, optional): Whether to shuffle the data. Default is True.
+
 
         Returns:
-        data_loader (torch_geometric.loader.ClusterLoader)
+            torch_geometric.loader.ClusterLoader
+
+        Shape:
+            Each batch element is a Data object with
+                x: (B, F)
+                edge_index: (2, E_b)
+                y: (B,)
+                train_mask/val_mask: (B,)
+                idx: (B,)
+            where B and E_b vary per cluster
         """
         print('Constructing batches...')
         # NOTE https://github.com/pyg-team/pytorch_geometric/discussions/7866#discussioncomment-7970609
@@ -166,6 +210,20 @@ class Trainer:
             trn_data_loader: torch_geometric.loader.ClusterLoader,
             criterion: torch.nn.Module, 
             optimizer: torch.optim.Optimizer) -> float:
+        """
+        Args:
+            trn_data_loader (torch_geometric.loader.ClusterLoader): clustered training batches
+            criterion (torch.nn.Module): loss function
+            optimizer (torch.optim.Optimizer): optimizer
+
+        Returns:
+            float: training loss
+
+        Shape:
+            For each batch:
+            out: (B, C)
+            batch.train_mask: (B,) [bool]
+        """
         criterion.to(self.device)
         total_loss = 0
         self.model.train()
@@ -188,7 +246,7 @@ class Trainer:
         self.model.to('cpu')
         criterion.to('cpu')
         with torch.no_grad():
-            if val_data_loader is None:
+            if val_data_loader is None: # full batch run
                 out = self.model(data_val)
             else:
                 out = torch.zeros(data_val.num_nodes, self.model.num_class, device='cpu')
@@ -230,10 +288,10 @@ class Trainer:
         Trains a given PyTorch model using the provided data loaders and training parameters.
         
         Args:
-        trn_data_loader: Training data loader.
-        data_val (Optional): validation data tensor.
-        val_data_loader (Optional): validation data loader.
-        early_stopping: patience for early stopping.
+            trn_data_loader: Training data loader.
+            data_val (Optional): validation data tensor.
+            val_data_loader (Optional): validation data loader.
+            early_stopping: patience for early stopping.
         
         """
         best_model = copy.deepcopy(self.model)
@@ -301,9 +359,9 @@ def get_val_mask(
     Make sure 'aggre_label' is in adata.obs.
 
     Args:
-        mode: 'donor' or 'cell'. If donor, the validation mask will be created based on the donors.
+        mode (str): 'donor' or 'cell'. If donor, the validation mask will be created based on the donors.
                 If cell, the validation mask will be created based on the cells.
-        val_percent: The percentage of validation samples. Default is 0.1.
+        val_percent (float): The percentage of validation samples. Default is 0.1.
     """
     if mode == 'donor':
         if sex_col is not None:

@@ -38,9 +38,8 @@ def subject_info(
 
 
 def condition_equal_subjects(adata, subid_col, cond_col):
-    r"""
+    r""" A helper function to test if the contrastive pair has equal subject numbers.
     Requiring binary conditions.
-    
     """
     dinfo = subject_info(adata.obs, subid_col, columns=[cond_col])
     min_num = dinfo[cond_col].value_counts().min()
@@ -63,15 +62,19 @@ def subsample_donors(
     Subsample donors based on the condition
     
     Args:
-        adata (AnnData): Annotated data matrix.
+        adata (AnnData): AnnData object for the data.
         subsample_num (str): Number of donors to subsample, e.g., '10:10'.
-        subid_col (str): Column name for donor ID.
-        cond_col (str): Column name for condition.
-        pos_cond (str): Positive condition name.
-        neg_cond (str): Negative condition name.
-        sex_col (str, optional): Column name for sex. Default: None.
-        mode (str, optional): Subsampling mode. 'random' means randomly select donors, 'top' means select donors with top cell number. Default: 'random'.
-
+            If not provided, will automatically subsample to the smaller number
+            of the contrastive conditions. Default: None.
+        subid_col (str): Column name for subject IDs in adata.obs.
+        cond_col (str): Column name for subjects' conditions in adata.obs.
+        pos_cond (str): Positive condition name for the contrastive conditions
+            of cond_col in adata.obs.
+        neg_cond (str): Negative condition name for the contrastive conditions
+            of cond_col in adata.obs.
+        sex_col (str, optional): Column name for subject's sex in adata.obs. Default: None.
+        mode (str, optional): Subsampling mode. 'random' means randomly select
+            donors, 'top' means select donors with top cell number. Default: 'top'.
     Returns:
         AnnData: subsampled AnnData object.
     """
@@ -183,8 +186,18 @@ def scmatrix(obs: pd.DataFrame,
              class_col: str, 
              score_col: str,
              column_order: Optional[List] = None) -> pd.DataFrame:
-    r"""
-    Subject-celltype matrix.
+    r"""Subject-celltype matrix. Using subject IDs, cell type labels, and PAC
+    scores, a N x M dataframe with rows as subjects, columns as cell types, and
+    averaged PAC scores as values will be computed. This matrix can then be used
+    to perform subject phenotype predictions and cell type priorizations later.
+
+    Args:
+        obs (pandas.DataFrame): the dataframe for single-cell observations in
+            adata (data.obs).
+        subid_col (str): Column name for subject IDs in obs.
+        class_col (str): Column name for cell type labels in obs.
+        score_col (str): Column name for PAC scores in obs.
+        column_order (List): list of column names for reordering.
     """
     warnings.filterwarnings("ignore")
     obs.loc[:, subid_col] = obs[subid_col].astype('category').cat.remove_unused_categories()

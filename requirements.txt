@@ -1,10 +1,9 @@
+platformdirs>=2.5.0
 numpy==1.26.4
 scipy==1.14.1
 scanpy==1.10.2
 anndata==0.10.3
 torch==2.3.0
-# https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_scatter-2.1.2%2Bpt23cu121-cp310-cp310-linux_x86_64.whl
-# https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_sparse-0.6.18%2Bpt23cu121-cp310-cp310-linux_x86_64.whl
 torch_geometric==2.3.1
 pandas==2.0.3
 multianndata==0.0.4

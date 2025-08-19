@@ -1,18 +1,26 @@
 # Phenotype Associated Single Cell encoder (PASCode)
 
+<!-- Badges: keep the set small and useful -->
+[![medRxiv](https://img.shields.io/badge/medRxiv-10.1101%2F2024.11.01.24316586-b31b1b)](https://www.medrxiv.org/content/10.1101/2024.11.01.24316586v1)
+[![Python 3.10](https://img.shields.io/badge/Python-3.10.12-blue?logo=python)](#system-requirements-and-dependencies)
+[![OS](https://img.shields.io/badge/OS-Linux%20%7C%20Windows-informational)](#system-requirements-and-dependencies)
+[![CUDA 12.1](https://img.shields.io/badge/CUDA-12.1-76b900?logo=nvidia)](#installation)
+<!-- [![License](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE) -->
+
 Phenotype Associated Single Cell encoder (PASCode) is a computational framework for phenotype scoring at the single-cell level. It integrates multiple differential abundance (DA) methods through an ensemble approach and leverages a graph attention network (GAT) to predict phenotype association scores for phenotype associated cells(PAC scores). Given single-cell sequencing data and a contrastive phenotypic label pair (e.g., disease vs. control), PASCode infers a PAC score for each cell, outperforming individual DA methods. PASCode combines existing DA methods, the Robust Rank Aggregation (RRA) algorithm, and trainable GAT models into unified Python-based interface. By standardizing inputs and outputs, it streamlines DA analysis by simplifying the running of these methods via user-friendly function calls.
 
 ![flowchart](./images/flowchart.png)
 
 ## System requirements and dependencies
-The code has been tested on Ubuntu 20.04 and Windows 12 with the following dependencies
+The code has been tested on Ubuntu 20.04, 22.04 and Windows 12 with the following dependencies
 
-Python version (**Note:** potential version issues may arise if using python>=3.13; we recommend installing PASCode in a new environment with the following tested python version)
+Python version (**Note:** potential version issues may arise if using python>=3.13 or <=3.9. We recommend installing PASCode in a new environment (e.g., a conda environment `conda create -n PASCode python==3.10.12`) with the following tested python version)
 ```
 python==3.10.12
 ```
 Python packages
 ```
+platformdirs>=2.5.0
 numpy==1.26.4
 scipy==1.14.1
 scanpy==1.10.2
@@ -49,11 +57,14 @@ PASCode is built upon existing DA methods and R packages, thus the user should i
     ```r
     install.packages('RobustRankAggreg')
     ```
-- `Milo` should be installed to be included in RRA **(Python)**.
+- *Milo* (python version) has already been integrated in PASCode, so only the following two dependencies need to be installed to run *Milo* **(R)**:
 
-  Follow instructions in https://github.com/emdann/milopy
-  
-  **Note:** After we completed PASCode, the authors of Milo began maintaining the package elsewhere. For PASCode, we should use the version linked above.
+    ```r
+    if (!requireNamespace("BiocManager", quietly = TRUE))
+        install.packages("BiocManager")
+    BiocManager::install("edgeR")
+    install.packages('statmod')
+    ```
 
 - `DAseq` should be installed to be included in RRA **(R)**.
 
@@ -76,17 +87,45 @@ git clone https://github.com/daifengwanglab/PASCode
 pip install -r requirements.txt
 ```
 
-#### Note:
-The user may run into errors regarding *sparse tensor*. This is an existing issue (see https://github.com/pyg-team/pytorch_geometric/discussions/7866#discussioncomment-7970609) with the installation of PyG.
-
-Also, in *requirements.txt*, we provided two wheel links to *torch_scatter* and *torch_sparse* to facilitate smooth installation, but those are compatible with the following settings only: *torch-2.3.0*, *python version 3.10*, *cuda version 12.1* on a *linux* machine. For compatibility with your local settings, look for corresponding links from https://data.pyg.org/whl/ and replace them in *requirements.txt*.
-
-<!-- https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_scatter-2.1.2%2Bpt23cu121-cp310-cp310-linux_x86_64.whl
-
-https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_sparse-0.6.18%2Bpt23cu121-cp310-cp310-linux_x86_64.whl -->
-
+3) install torch-scatter and torch-sparse (in this order)
+- If on Linux Ubuntu:
+```python
+# first install torch-scatter
+pip install https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_scatter-2.1.2%2Bpt23cu121-cp310-cp310-linux_x86_64.whl
+# then install torch-sparse
+pip install https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_sparse-0.6.18%2Bpt23cu121-cp310-cp310-linux_x86_64.whl
+```
+- If on Windows:
+```python
+# first install torch-scatter
+pip install https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_scatter-2.1.2%2Bpt23cu121-cp310-cp310-win_amd64.whl
+# then install torch-sparse
+pip install https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_sparse-0.6.18%2Bpt23cu121-cp310-cp310-win_amd64.whl
+```
+Note:
+- If this doesn't work, or an error regarding torch-sparse or torch-scatter is raised later when running GAT, you may consider checking the corresponding wheel version from https://data.pyg.org/whl/ and replace them here.
+- If you run into errors regarding *sparse tensor*: This is a common issue. See https://github.com/pyg-team/pytorch_geometric/discussions/7866#discussioncomment-7970609 for the solution.
 
 ## Usage guide
+If the user only wants a quick run to get PAC scores without caring about customizations for better accuray and controls over some of the key modules, use this function:
+
+```python
+import scanpy as sc
+adata = sc.read_h5ad('./data/synth_demo_2v6_sparse.h5ad')
+pac_scores = PASCode.model.score(
+    adata=adata,
+    subid_col='subject_id', # column name in adata.obs for subject IDs
+    cond_col='phenotype', # column name for subject-level condition of interest
+    pos_cond='cond1', # name for positive condition in `cond_col`
+    neg_cond='cond2', # name for negative condition in `cond_col
+    device='cuda:0' # GAT device. change accordingly
+)
+```
+
+We also provide a general step-by-step usage guide below for the overall procedure.
+
+For more customizations and controls in order to get more accurate PAC scores for the user's particular dataset and task, we provide tutorials with detailed illustrations for important modules such as cell-cell graph construction, DA methods settings, and GAT parameter choices. They can be found at `Tutorial_PASCode-RRA.ipynb` and `Tutorial_PASCode-ScorePrediction.ipynb` on this GitHub page.
+
 ### Step 1: Input data format
 The input data should be an [anndata](https://anndata.readthedocs.io/en/stable/) object, with **already preprocessed** single-cell measurements data in `anndata.X` (`numpy.ndarray`) and subject-level information in `anndata.obs` (`pandas.DataFrame`). For example,
 
@@ -162,17 +201,13 @@ adata = anndata.AnnData(X=X, obs=obs)
 
 ### Step 2: Balance donor numbers via subsampling
 
-Skip this step if subject numbers in the contrastive condition pair are already balanced ($\frac{n_{larger}}{n_{smaller}}= 1$).
+Skip this step if subject numbers in the contrastive condition pair are already balanced.
 
-In our benchmark experiments, we found that DA methods are more accurate for balanced donor numbers between the positive condition ($n_1$) and negative condtion ($n_2$). Unless $n_1$ and $n_2$ are highly close, subsampling is almost always recommended to alleviate performance degradation.
+In our benchmark experiments, we found that DA methods are more accurate for balanced donor numbers between the positive condition ($n_1$) and negative condtion ($n_2$). Unless $n_1$ and $n_2$ are extremely close, subsampling is almost always recommended to alleviate performance degradation.
 
-The (approximate) **rule-of-thumb** regarding whether you should perform this subsampling step:
- 
-if $\frac{n_{larger}}{n_{smaller}}\ge 0.75$, subsample may not be necessary; otherwise, perform subsampling.
+Subject subsampling is particularly necessary for imbalanced population-scale datasets. For example, for PsychAD's AD contrast, we have 314 AD subjects and 111 Controls, which is highly imbalanced. Running DA and RRA directly would lead to low accuracy, inhibiting meaningful downstream analysis.
 
-This is particularly necessary for population-level datasets. For example, for PsychAD's AD contrast, we have 314 AD subjects and 111 Controls, which is highly imbalanced. Running DA and RRA directly on the whole dataset would lead to low accuracy, inhibiting meaningful downstream analysis.
-
-Therefore, in our analysis, we took 100 AD vs. 100 Controls as train set for running DA methods and RRA to get *aggregated phenotype labels*, then trained a GAT model with this train set and a 11 AD vs. 11 Controls validation set (for early stopping to obtain the best model). We then use the trained GAT model to infer PAC scores for the whole dataset (i.e., 314 AD vs. 111 Controls).
+Therefore, in our analysis, we took 100 AD vs. 100 Controls as the train set for running DA methods and RRA to get *aggregated phenotype labels*, then trained a GAT model with this train set and a 11 AD vs. 11 Controls validation set (for early stopping to obtain the best model). We then used the trained GAT model to infer PAC scores for the whole dataset (i.e., 314 AD vs. 111 Controls).
  
 ```python
 """This function will automatically subsample subjects to the smaller number in the two conditions.
@@ -188,6 +223,7 @@ print(adata.obs[cond_col].value_counts())
 pos_cond = 'cond1'
 neg_cond = 'cond2'
 
+import PASCode
 adata = PASCode.utils.subsample_donors(
     adata=adata,
     subid_col=subid_col,
@@ -195,7 +231,6 @@ adata = PASCode.utils.subsample_donors(
     pos_cond=pos_cond,
     neg_cond=neg_cond,
     sex_col=None, # Specify the column name for sex in adata.obs to account for sex balance during subsampling. Default: None.
-    mode='top' # Keep subjects with the largest number of cells. Default: 'top'.
 )
 ```
 ```
@@ -212,10 +247,10 @@ cond2    2
 cond1    2
 Name: count, dtype: int64
 ```
-
 ### Step 3: Run DA methods and RRA
-We have a convenient function call to run DA methods and RRA to directly get the *aggregated phenotype labels*:
+We have a convenient function call to run DA methods and RRA:
 ```python
+import PASCode
 adata.obs['aggreg_label'] = PASCode.da.agglabel(
     adata,
     subid_col,
@@ -225,14 +260,73 @@ adata.obs['aggreg_label'] = PASCode.da.agglabel(
     da_methods=['milo','meld','daseq'] # recommended/default combination that yields high accuracy
 )
 ```
+```
+============================= DA and RRA... =============================
+'use_rep' not found in adata.obsm. Computing PCA from adata.X to use as rep for cell-cell graph...
+Scaling...
+Running PCA...
+Computing connectivities...
+
+----------------------------- Milo started ... -----------------------------
+Making neighborhoods...
+WARNING:root:Using X_pca as default embedding
+Counting neighborhoods...
+Running differential abundance testing...
+----------------------------- Milo Time cost (s):  2.58  -----------------------------
+
+
+ ----------------------------- MELD started ... -----------------------------
+Building graph on 5942 samples and 50 features.
+Calculating graph and diffusion operator...
+  Calculating KNN search...
+  Calculated KNN search in 2.00 seconds.
+  Calculating affinities...
+  Calculated affinities in 0.13 seconds.
+Calculated graph and diffusion operator in 2.41 seconds.
+----------------------------- MELD Time cost (s):  2.69  -----------------------------
+
+
+    WARNING: The R package "reticulate" only fixed recently
+    an issue that caused a segfault when used with rpy2:
+    https://github.com/rstudio/reticulate/pull/1188
+    Make sure that you use a version of that package that includes
+    the fix.
+    
+----------------------------- DAseq started ... -----------------------------
+Calculating DA score vector.
+Running GLM.
+Test on random labels.
+Setting thresholds based on permutation
+----------------------------- DA-seq Time cost (s):  47.72  -----------------------------
+
+
+
+----------------------------- RobustRankAggregation started ... -----------------------------
+Aggregating positive score ranks...
+Aggregating negative score ranks...
+Combining positive and negative score ranks...
+----------------------------- RobustRankAggregation Time cost (s): 0.37 -----------------------------
+
+
+============================= DA and RRA Time cost (s):  63.49  =============================
+
+aggreg_label
+ 0.0    4190
+ 1.0     887
+-1.0     865
+Name: count, dtype: int64
+```
 
 ### Step 4: GAT for annotating PAC scores for the whole dataset
 
+We first need to transfer the aggregated labels from the subsampled dataset back to the original dataset.
 ```python
-# We need to transfer the aggregated labels from the subsampled dataset back to the original dataset.
+adata_sub = adata.copy() # subsampled balanced dataset
+adata = adata0.copy() # original whole dataset
 adata.obs.loc[adata_sub.obs.index, 'aggreg_label'] = adata_sub.obs['aggreg_label']
-
-# Prepare Training and Validation Masks
+```
+Prepare training and validation masks
+```python
 PASCode.model.get_val_mask(
     adata_sub, 
     subid_col=subid_col,
@@ -248,29 +342,67 @@ adata.obs['val_mask'] = adata.obs.index.isin(
 adata.obs['train_mask'] = adata.obs.index.isin(
     adata_sub.obs[adata_sub.obs['train_mask']].index
 )
+```
 
-# train model
+Train the GAT model
+```python
 model = PASCode.model.train_model(
     adata=adata,
     agglabel_col='aggreg_label',
     device='cuda:0' # NOTE change accordingly
 )
+```
+```
+No graph found in `adata.obsp`'s `connectivities`. Building graph from scratch...
+Scaling data...
+Running PCA...
+Builidng graph...
+Building graph time cost (s): 110.534112.
+Constructing batches...
+Computing METIS partitioning...
+Done!
+Batch construction done.
 
-# predict pac score
+============================= Training GAT... =============================
+Epoch: 1/100 - lr: 1.000e-03 - train_loss: 0.449 - val_loss: 0.392 
+Epoch: 2/100 - lr: 1.000e-03 - train_loss: 0.194 - val_loss: 0.342 
+Epoch: 3/100 - lr: 1.000e-03 - train_loss: 0.163 - val_loss: 0.193 
+Epoch: 4/100 - lr: 1.000e-03 - train_loss: 0.140 - val_loss: 0.208 
+Epoch: 5/100 - lr: 1.000e-03 - train_loss: 0.128 - val_loss: 0.172 
+Epoch: 6/100 - lr: 1.000e-03 - train_loss: 0.110 - val_loss: 0.193 
+Epoch: 7/100 - lr: 1.000e-03 - train_loss: 0.097 - val_loss: 0.196 
+Epoch: 8/100 - lr: 1.000e-03 - train_loss: 0.091 - val_loss: 0.174 
+Epoch: 9/100 - lr: 5.000e-04 - train_loss: 0.092 - val_loss: 0.172 
+Epoch: 10/100 - lr: 5.000e-04 - train_loss: 0.085 - val_loss: 0.184 
+Epoch: 11/100 - lr: 5.000e-04 - train_loss: 0.075 - val_loss: 0.168 
+Epoch: 12/100 - lr: 5.000e-04 - train_loss: 0.076 - val_loss: 0.185 
+Epoch: 13/100 - lr: 5.000e-04 - train_loss: 0.078 - val_loss: 0.180 
+Epoch: 14/100 - lr: 5.000e-04 - train_loss: 0.074 - val_loss: 0.175 
+Epoch: 15/100 - lr: 2.500e-04 - train_loss: 0.069 - val_loss: 0.172 
+Epoch: 16/100 - lr: 2.500e-04 - train_loss: 0.072 - val_loss: 0.171 
+Epoch: 17/100 - lr: 2.500e-04 - train_loss: 0.070 - val_loss: 0.175 
+Epoch: 18/100 - lr: 1.250e-04 - train_loss: 0.066 - val_loss: 0.178 
+Epoch: 19/100 - lr: 1.250e-04 - train_loss: 0.061 - val_loss: 0.171 
+Epoch: 20/100 - lr: 1.250e-04 - train_loss: 0.062 - val_loss: 0.175 
+Epoch: 21/100 - lr: 6.250e-05 - train_loss: 0.061 - val_loss: 0.172 
+Epoch: 22/100 - lr: 6.250e-05 - train_loss: 0.066 - val_loss: 0.172 
+============================= Training Time cost (s): 19.68 =============================
+```
+
+Predict PAC scores and visualize
+```
 adata.obs['PAC_score'] = model.predict(adata)
 
 sc.tl.umap(adata)
 sc.pl.umap(adata, color=['PAC_score', 'phenotype', 'celltype'])
-
 ```
-![alt text](image.png)
 
-Toy data total running time (including running Milo, MELD, DAseq, and traininig GAT model): 3min.
+![alt text](./images/demo_plot.png)
 
-PASCode running time can vary across systems and various use cases. 
+Demo total running time (including running Milo, MELD, DAseq, and traininig GAT model): ~3min.
 
-Except for the above simple usage guide, we provide tutorials (*Tutorial_PASCode-RRA.ipynb*, *Tutorial_PASCode-ScorePrediction.ipynb*) to guide users for more customizations. Users can refer to these two tutorials for more customized, efficient, and accurate PAC scoring.
+PASCode running time can vary across systems and data scales.
 
 ## Reference
 
-Chenfeng He, Athan Z. Li, Kalpana Hanthanan Arachchilage, Chirag Gupta, Xiang Huang, Xinyu Zhao, PsychAD Consortium, Kiran Girdhar, Georgios Voloudakis, Gabriel E. Hoffman, Jaroslav Bendl, John F. Fullard, Donghoon Lee, Panos Roussos,  Daifeng Wang. *Phenotype Scoring of Population Scale Single-Cell Data Dissects Alzheimer's Disease Complexity*. doi: https://doi.org/10.1101/2024.11.01.24316586.
+Chenfeng He*, Athan Z. Li*, Kalpana Hanthanan Arachchilage*, Chirag Gupta*, Xiang Huang, Xinyu Zhao, PsychAD Consortium, Kiran Girdhar, Georgios Voloudakis, Gabriel E. Hoffman, Jaroslav Bendl, John F. Fullard, Donghoon Lee, Panos Roussos†, Daifeng Wang†. *Phenotype Scoring of Population Scale Single-Cell Data Dissects Alzheimer's Disease Complexity*. doi: https://doi.org/10.1101/2024.11.01.24316586.

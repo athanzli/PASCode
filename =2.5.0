@@ -1,0 +1,5 @@
+Collecting platformdirs
+  Using cached platformdirs-4.3.8-py3-none-any.whl.metadata (12 kB)
+Using cached platformdirs-4.3.8-py3-none-any.whl (18 kB)
+Installing collected packages: platformdirs
+Successfully installed platformdirs-4.3.8
