@@ -57,7 +57,7 @@ PASCode is built upon existing DA methods and R packages, thus the user should i
     ```r
     install.packages('RobustRankAggreg')
     ```
-- *Milo* (python version) has already been integrated in PASCode, so only the following two dependencies need to be installed to run *Milo* **(R)**:
+- *Milo* (python version) has already been integrated in PASCode, thus only the following two dependencies need to be installed to run *Milo* **(R)**:
 
     ```r
     if (!requireNamespace("BiocManager", quietly = TRUE))
@@ -189,6 +189,17 @@ dinfo = PASCode.utils.subject_info(
     columns=['Sex', 'Age'] # e.g. count subject numbers for sex and age
 )
 print(dinfo)
+```
+```
+       Sex Age  cell_num
+43    Male  81      1415
+24    Male  86      1425
+34    Male  80      1438
+29  Female  73      1454
+31  Female  73      1463
+2   Female  83      1484
+21    Male  62      1489
+36  Female  62      1506
 ```
 
 If you need to **create a new** `anndata` object, you can easily do so via the `andata.AnnData` class by providing at least
