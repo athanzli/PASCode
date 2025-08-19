@@ -107,7 +107,7 @@ Note:
 - If you run into errors regarding *sparse tensor*: This is a common issue. See https://github.com/pyg-team/pytorch_geometric/discussions/7866#discussioncomment-7970609 for the solution.
 
 ## Usage guide
-If the user only wants a quick run to get PAC scores without caring about customizations for better accuray and controls over some of the key modules, use this function:
+If the user only wants a quick run to get PAC scores without caring much about customizations for better accuray and controls, use this function:
 
 ```python
 import scanpy as sc
@@ -122,9 +122,9 @@ pac_scores = PASCode.model.score(
 )
 ```
 
-We also provide a general step-by-step usage guide below for the overall procedure.
+Below we present a general step-by-step usage guide.
 
-For more customizations and controls in order to get more accurate PAC scores for the user's particular dataset and task, we provide tutorials with detailed illustrations for important modules such as cell-cell graph construction, DA methods settings, and GAT parameter choices. They can be found at `Tutorial_PASCode-RRA.ipynb` and `Tutorial_PASCode-ScorePrediction.ipynb` on this GitHub page.
+More detailed tutorials are also provided. They can be found at `Tutorial_PASCode-RRA.ipynb` and `Tutorial_PASCode-ScorePrediction.ipynb` on this GitHub page.
 
 ### Step 1: Input data format
 The input data should be an [anndata](https://anndata.readthedocs.io/en/stable/) object, with **already preprocessed** single-cell measurements data in `anndata.X` (`numpy.ndarray`) and subject-level information in `anndata.obs` (`pandas.DataFrame`). For example,
