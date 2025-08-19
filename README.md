@@ -59,7 +59,7 @@ PASCode is built upon existing DA methods and R packages, thus the user should i
 
   Follow instructions in https://github.com/KlugerLab/DAseq
 
-- The rest of the DA methods will be installed automatically along with PASCode in step 2.
+- The rest of the DA methods will be automatically installed in step 2.
 
 ### Step 2: Install PASCode (2~3 min)
 
@@ -88,95 +88,148 @@ https://data.pyg.org/whl/torch-2.3.0%2Bcu121/torch_sparse-0.6.18%2Bpt23cu121-cp3
 
 ## Usage guide
 ### Step 1: Input data format
-The input data should be an [anndata](https://anndata.readthedocs.io/en/stable/) object, with expression data in `anndata.X` and subject-level information in `anndata.obs`. For example,
+The input data should be an [anndata](https://anndata.readthedocs.io/en/stable/) object, with **already preprocessed** single-cell measurements data in `anndata.X` (`numpy.ndarray`) and subject-level information in `anndata.obs` (`pandas.DataFrame`). For example,
 
 ```python
 import scanpy as sc
-adata = sc.read_h5ad('./data/synth_data_2v6.h5ad')
+adata = sc.read_h5ad('./data/synth_demo_2v6_sparse.h5ad')
 print(adata)
 ```
-
-```python
-print(adata.X)
-print(adata.X.shape)
 ```
-
+AnnData object with n_obs × n_vars = 11674 × 2000
+    obs: 'celltype', 'phenotype', 'subject_id'
+```
 ```python
+adata.X = adata.X.toarray()
+print(adata.X)
+```
+```
+[[0.        0.        0.        ... 0.        1.1308908 0.       ]
+ [0.        0.        0.        ... 0.        0.        0.       ]
+ [0.        0.        0.        ... 0.        0.        0.       ]
+ ...
+ [0.        0.        0.        ... 0.        0.        0.       ]
+ [2.4369774 0.        0.        ... 2.4369774 0.        0.       ]
+ [0.        0.        0.        ... 0.        0.        0.       ]]
+```
+```python
+import anndata
 print(adata.obs)
 ```
+```
+                    celltype phenotype subject_id
+TAG                                              
+AACTGGTGTACCGGCT.1        Ex     cond1         21
+AAGACCTAGTTAACGA.1        Ex     cond1         21
+ACATCAGCAGGCTCAC.1        Ex     cond1          2
+ACGAGGATCCATTCTA.1        Ex     cond1          2
+ATCATCTGTGGACGAT.1        Ex     cond2         34
+...                      ...       ...        ...
+GCACATACATGCCTTC.40      End     cond2         43
+GCCTCTACACTTAACG.44      Per     cond1         21
+GTGCGGTCAATCGGTT.46      End     cond2         29
+CACACTCTCTCTGAGA.48      Per     cond1          2
+TGCCCATAGTAGGTGC.48      Per     cond1         21
 
-Make sure adata.obs has at least the following two columns:
-1. a *subject ID* column for the IDs of subjects.
-2. a *condition* column, indicating either a positive condition (e.g., AD) or a negative condition (e.g., Control) for the subject.
+[11674 rows x 3 columns]
+```
+Make sure `adata.obs` (`pandas.DataFrame`) has at least the following:
+- single-cell IDs as indices (e.g. the 'TAG' indices 'AACTGGTGTACCGGCT.1, ...')
+- a *subject ID* column for the IDs of subjects (e.g., 'subject_id' above).
+- a *condition* column, indicating either a positive condition (e.g., AD) or a negative condition (e.g., Control) for the subject (e.g., 'phenotype' above).
 
 We can take a look at subject-level information w.r.t. any subject-level labels of interest, together with subject ID:
 
 ```python
-subid_col = 'Donor ID' # specify the column name for subject IDs
+subid_col = 'subject_id' # specify the column name for subject IDs
 import PASCode
 dinfo = PASCode.utils.subject_info(
-    d.obs,
+    adata.obs,
     subid_col=subid_col,
-    columns=['Sex','Braak'] # e.g. count donor numbers for sex and braak stages 
+    # specify the subject-level column names to summarize (must be subject-level)
+    columns=['Sex', 'Age'] # e.g. count subject numbers for sex and age
 )
 print(dinfo)
 ```
 
-
-
-### Step 2: Balance donor numbers
-
-DA methods are more accurate for balanced donor numbers between the positive condition (n1) and negative condtion (n2). Unless n1 and n2 are extremely close, subsampling is almost always recommended to avoid accuracy loss.
-
+If you need to **create a new** `anndata` object, you can easily do so via the `andata.AnnData` class by providing at least
+- a preprocessed single-cell measurements `X` (e.g., single-cell RNA-seq) with cells as rows and features as columns. \
+**Note: make sure `X` is preprocessed, at the very least log-normalized**, if not standard-scaled (PASCode will automatically perform standard scaling, which is strongly recommended for procedures like PCA and GAT training to achieve higher accuracy and stability).
+- a single-cell observation information dataframe, including celltype, phenotype, subject_id, etc.
 ```python
+adata = anndata.AnnData(X=X, obs=obs)
+```
+
+### Step 2: Balance donor numbers via subsampling
+
+Skip this step if subject numbers in the contrastive condition pair are already balanced ($\frac{n_{larger}}{n_{smaller}}= 1$).
+
+In our benchmark experiments, we found that DA methods are more accurate for balanced donor numbers between the positive condition ($n_1$) and negative condtion ($n_2$). Unless $n_1$ and $n_2$ are highly close, subsampling is almost always recommended to alleviate performance degradation.
+
+The (approximate) **rule-of-thumb** regarding whether you should perform this subsampling step:
+ 
+if $\frac{n_{larger}}{n_{smaller}}\ge 0.75$, subsample may not be necessary; otherwise, perform subsampling.
+
+This is particularly necessary for population-level datasets. For example, for PsychAD's AD contrast, we have 314 AD subjects and 111 Controls, which is highly imbalanced. Running DA and RRA directly on the whole dataset would lead to low accuracy, inhibiting meaningful downstream analysis.
+
+Therefore, in our analysis, we took 100 AD vs. 100 Controls as train set for running DA methods and RRA to get *aggregated phenotype labels*, then trained a GAT model with this train set and a 11 AD vs. 11 Controls validation set (for early stopping to obtain the best model). We then use the trained GAT model to infer PAC scores for the whole dataset (i.e., 314 AD vs. 111 Controls).
+ 
+```python
+"""This function will automatically subsample subjects to the smaller number in the two conditions.
+For instance, 2v6 -> 2v2
 """
-This function will automatically subsample to the minimum number of subjects in the two conditions.
-"""
-adata0 = adata.copy() # adata0 will be used for complete PAC score annotation using GAT later in Step 4
+# adata0 will be used for complete PAC score annotation using GAT later in Step 4
+adata0 = adata.copy()
+
+# specify required column names, and the labels for the contrastive condition pair
+subid_col = 'subject_id'
+cond_col = 'phenotype'
+print(adata.obs[cond_col].value_counts())
+pos_cond = 'cond1'
+neg_cond = 'cond2'
+
 adata = PASCode.utils.subsample_donors(
     adata=adata,
     subid_col=subid_col,
     cond_col=cond_col,
     pos_cond=pos_cond,
     neg_cond=neg_cond,
-    sex_col=None, # Specify the column name for sex_col in adata.obs to also account for sex balance.
-    mode='top' # Keep subjects with the largest number of cells
+    sex_col=None, # Specify the column name for sex in adata.obs to account for sex balance during subsampling. Default: None.
+    mode='top' # Keep subjects with the largest number of cells. Default: 'top'.
 )
 ```
-
+```
 Before donor subsampling:
 phenotype
 cond2    6
 cond1    2
 Name: count, dtype: int64
-'subsample_num' not provided. Automatically subsample to the minimum number of subjects in the two conditions.
+'subsample_num' not provided. Automatically subsampling to the smaller number of subjects in the two conditions.
 Donor subsampling:  2:2
 After donor subsampling:
 phenotype
 cond2    2
 cond1    2
 Name: count, dtype: int64
+```
 
-### Step 3: Run DA methods
-
+### Step 3: Run DA methods and RRA
+We have a convenient function call to run DA methods and RRA to directly get the *aggregated phenotype labels*:
 ```python
-# Specify positive and negative condition names in condition column
-pos_cond = 'cond1'
-neg_cond = 'cond2'
-
 adata.obs['aggreg_label'] = PASCode.da.agglabel(
     adata,
     subid_col,
     cond_col,
     pos_cond,
-    neg_cond
+    neg_cond,
+    da_methods=['milo','meld','daseq'] # recommended/default combination that yields high accuracy
 )
 ```
 
-### Step 4: GAT for annotating PAC scores
+### Step 4: GAT for annotating PAC scores for the whole dataset
 
 ```python
-# We must transfer the aggregated labels from the subsampled dataset back to the original dataset.
+# We need to transfer the aggregated labels from the subsampled dataset back to the original dataset.
 adata.obs.loc[adata_sub.obs.index, 'aggreg_label'] = adata_sub.obs['aggreg_label']
 
 # Prepare Training and Validation Masks

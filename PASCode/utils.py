@@ -1,21 +1,28 @@
 import numpy as np
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import warnings
 import scanpy as sc
-from matplotlib.colors import LinearSegmentedColormap, hex2color, to_hex
-from matplotlib.cm import ScalarMappable
 from typing import List, Optional
 import anndata
 import os
+import numpy as np
 
 def subject_info(
         obs, 
         subid_col, 
         columns
     ):
+    r"""Summarize subject-level information from a single-cell observation dataframe.
+
+    Args:
+        obs (pandas.DataFrame): indicies are cell barcode IDs, and columns are
+            relevant information such as cell type, subject ID, subject sex,
+            subject braak stages, condition labels, etc.
+        subid_col (str): column name for subject IDs.
+        columns: columns of interest to be summarized.
+    Returns:
+        subinfo (pandas.DataFrame): summarized subject-level information.
+    """
     warnings.filterwarnings("ignore")
     obs[subid_col] = obs[subid_col].astype('category').cat.remove_unused_categories()
     subinfo = pd.DataFrame(index=obs[subid_col].unique(), columns=columns)
@@ -26,7 +33,150 @@ def subject_info(
     subinfo.loc[cell_num.index, 'cell_num'] = cell_num.values
     subinfo.sort_index(axis=0, inplace=True)
     subinfo = subinfo.sort_values(by='cell_num')
+    subinfo['cell_num'] = subinfo['cell_num'].astype(int)
     return subinfo
+
+
+def condition_equal_subjects(adata, subid_col, cond_col):
+    r"""
+    Requiring binary conditions.
+    
+    """
+    dinfo = subject_info(adata.obs, subid_col, columns=[cond_col])
+    min_num = dinfo[cond_col].value_counts().min()
+    max_num = dinfo[cond_col].value_counts().max()
+    if min_num == max_num:
+        return True
+    return False
+
+def subsample_donors(
+    adata,
+    subid_col,
+    cond_col,
+    pos_cond,
+    neg_cond,
+    sex_col=None,
+    subsample_num=None,
+    mode='top', # 'random' or 'top'
+):
+    r"""
+    Subsample donors based on the condition
+    
+    Args:
+        adata (AnnData): Annotated data matrix.
+        subsample_num (str): Number of donors to subsample, e.g., '10:10'.
+        subid_col (str): Column name for donor ID.
+        cond_col (str): Column name for condition.
+        pos_cond (str): Positive condition name.
+        neg_cond (str): Negative condition name.
+        sex_col (str, optional): Column name for sex. Default: None.
+        mode (str, optional): Subsampling mode. 'random' means randomly select donors, 'top' means select donors with top cell number. Default: 'random'.
+
+    Returns:
+        AnnData: subsampled AnnData object.
+    """
+    print("Before donor subsampling:")
+    dinfo = subject_info(
+        obs=adata.obs,
+        subid_col=subid_col,
+        columns=[cond_col, sex_col] if sex_col is not None else [cond_col])
+    print(dinfo.groupby([cond_col, sex_col]).size().unstack() if sex_col is not None else dinfo[cond_col].value_counts())
+
+    if subsample_num is None:
+        print("'subsample_num' not provided. Automatically subsample to the minimum number of subjects in the two conditions.")
+        min_num = dinfo[cond_col].value_counts().min()
+        subsample_num = str(min_num) + ':' + str(min_num)
+
+    print("Donor subsampling: ", subsample_num)
+    pos_donor_num = int(subsample_num.split(':')[0])
+    neg_donor_num = int(subsample_num.split(':')[1])
+    if sex_col is None:
+        if mode == 'random':
+            sel_pos = dinfo[dinfo[cond_col]==pos_cond].sample(n=pos_donor_num).index
+            sel_neg = dinfo[dinfo[cond_col]==neg_cond].sample(n=neg_donor_num).index
+        elif mode == 'top':
+            sel_pos = dinfo[dinfo[cond_col]==pos_cond].sort_values(by='cell_num', ascending=False)[:pos_donor_num].index
+            sel_neg = dinfo[dinfo[cond_col]==neg_cond].sort_values(by='cell_num', ascending=False)[:neg_donor_num].index
+        chosen_donors = np.concatenate((sel_pos, sel_neg))
+    else:
+        pos_hf_num = pos_donor_num // 2
+        neg_hf_num = neg_donor_num // 2
+        df = dinfo.groupby([cond_col, sex_col]).size().unstack()
+        female = df.columns[0] # we ignored a strict correspondence here
+        male = df.columns[1]
+        if df.loc[pos_cond].min() >= pos_hf_num:
+            posm_num = pos_hf_num
+            posfm_num = pos_hf_num
+        else:
+            posm_num = df.loc[pos_cond, male]
+            posfm_num = pos_donor_num - posm_num
+        if df.loc[neg_cond].min() >= neg_hf_num:
+            negm_num = neg_hf_num
+            negfm_num = neg_hf_num
+        else:
+            negm_num = df.loc[neg_cond, male]
+            negfm_num = neg_donor_num - negm_num
+        
+        if mode == 'random':
+            pos_m_donors = dinfo[((dinfo[cond_col]==pos_cond)) & (dinfo[sex_col]==male)].sample(n=posm_num).index
+            pos_fm_donors = dinfo[((dinfo[cond_col]==pos_cond)) & (dinfo[sex_col]==female)].sample(n=posfm_num).index
+            neg_m_donors = dinfo[((dinfo[cond_col]==neg_cond)) & (dinfo[sex_col]==male)].sample(n=negm_num).index
+            neg_fm_donors = dinfo[((dinfo[cond_col]==neg_cond)) & (dinfo[sex_col]==female)].sample(n=negfm_num).index
+        elif mode == 'top':
+            pos_m_donors = dinfo[((dinfo[cond_col]==pos_cond)) & (dinfo[sex_col]==male)].sort_values(by='cell_num', ascending=True)[:posm_num].index
+            pos_fm_donors = dinfo[((dinfo[cond_col]==pos_cond)) & (dinfo[sex_col]==female)].sort_values(by='cell_num', ascending=True)[:posfm_num].index
+            neg_m_donors = dinfo[((dinfo[cond_col]==neg_cond)) & (dinfo[sex_col]==male)].sort_values(by='cell_num', ascending=True)[:negm_num].index
+            neg_fm_donors = dinfo[((dinfo[cond_col]==neg_cond)) & (dinfo[sex_col]==female)].sort_values(by='cell_num', ascending=True)[:negfm_num].index
+        chosen_donors = np.concatenate((pos_m_donors, pos_fm_donors, neg_m_donors, neg_fm_donors))
+    adata = adata[adata.obs[subid_col].isin(chosen_donors)]
+    print("After donor subsampling:")
+    dinfo = subject_info(
+        obs=adata.obs,
+        subid_col=subid_col,
+        columns=[cond_col, sex_col] if sex_col is not None else [cond_col])
+    print(dinfo.groupby([cond_col, sex_col]).size().unstack() if sex_col is not None else dinfo[cond_col].value_counts())
+
+    # remove graph connectivity, if it was in original adata. Otherwise, it will cause error
+    if 'neighbors' in adata.uns.keys():
+        del adata.uns['neighbors']
+    if 'connectivities' in adata.obsp.keys():
+        del adata.obsp['connectivities']
+
+    return adata
+
+from .graph import build_graph
+def align_psychad_gene(adata: anndata.AnnData,):
+    r"""
+    Take the intersection of adata.var_names and PsychAD genes, and reorder adata.var_names to match the order of PsychAD genes.
+
+    Returns:
+        AnnData: AnnData object with genes aligned to PsychAD genes.
+    """
+    if 'connectivities' not in adata.obsp.keys():
+        print("No graph found in adata. Building graph using PCA...")
+        build_graph(adata, run_umap=False)
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_dir, "PsychAD_hvg_3401.csv")
+    psychad_genes = pd.read_csv(file_path, index_col=0)
+
+    adata_ori = adata.copy()
+    ovlp_genes = adata.var_names.intersection(psychad_genes.index)
+    rest_genes = psychad_genes.index.difference(ovlp_genes)
+    rest_genes_var = pd.DataFrame(index=rest_genes, columns=['gene'], data=rest_genes)
+    adata = anndata.AnnData(
+        X = np.hstack([adata.X, np.zeros((adata.shape[0], rest_genes.shape[0]))]),
+        obs = adata.obs,
+        var = pd.concat([adata.var, rest_genes_var]),
+    )
+    adata = adata[:, psychad_genes.index]
+    if len(adata_ori.uns) > 0:
+        adata.uns = adata_ori.uns
+    if len(adata_ori.obsm) > 0:
+        adata.obsm = adata_ori.obsm
+    if len(adata_ori.obsp) > 0:
+        adata.obsp = adata_ori.obsp
+    return adata
 
 def scmatrix(obs: pd.DataFrame, 
              subid_col: str, 
@@ -34,7 +184,7 @@ def scmatrix(obs: pd.DataFrame,
              score_col: str,
              column_order: Optional[List] = None) -> pd.DataFrame:
     r"""
-    Subject-celltype matrix.    
+    Subject-celltype matrix.
     """
     warnings.filterwarnings("ignore")
     obs.loc[:, subid_col] = obs[subid_col].astype('category').cat.remove_unused_categories()
@@ -49,6 +199,14 @@ def scmatrix(obs: pd.DataFrame,
         scmat = scmat.loc[:, column_order]
     return scmat
 
+###############################################################################
+# plot utilities
+###############################################################################
+import seaborn as sns
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+from matplotlib.colors import LinearSegmentedColormap, hex2color, to_hex
+from matplotlib.cm import ScalarMappable
 def plot_umap(
     adata, 
     umap_key, 
@@ -309,145 +467,3 @@ def plot_color_bar(
     if save_path:
         plt.savefig(save_path, bbox_inches='tight', dpi=600)
     plt.show()
-
-def condition_equal_subjects(adata, subid_col, cond_col):
-    r"""
-    Requiring binary conditions.
-    
-    """
-    dinfo = subject_info(adata.obs, subid_col, columns=[cond_col])
-    min_num = dinfo[cond_col].value_counts().min()
-    max_num = dinfo[cond_col].value_counts().max()
-    if min_num == max_num:
-        return True
-    return False
-
-
-def subsample_donors(
-    adata,
-    subid_col,
-    cond_col,
-    pos_cond,
-    neg_cond,
-    sex_col=None,
-    subsample_num=None,
-    mode='top', # 'random' or 'top'
-):
-    r"""
-    Subsample donors based on the condition
-    
-    Args:
-        adata (AnnData): Annotated data matrix.
-        subsample_num (str): Number of donors to subsample, e.g., '10:10'.
-        subid_col (str): Column name for donor ID.
-        cond_col (str): Column name for condition.
-        pos_cond (str): Positive condition name.
-        neg_cond (str): Negative condition name.
-        sex_col (str, optional): Column name for sex. Default: None.
-        mode (str, optional): Subsampling mode. 'random' means randomly select donors, 'top' means select donors with top cell number. Default: 'random'.
-
-    Returns:
-        AnnData: subsampled AnnData object.
-    """
-    print("Before donor subsampling:")
-    dinfo = subject_info(
-        obs=adata.obs,
-        subid_col=subid_col,
-        columns=[cond_col, sex_col] if sex_col is not None else [cond_col])
-    print(dinfo.groupby([cond_col, sex_col]).size().unstack() if sex_col is not None else dinfo[cond_col].value_counts())
-
-    if subsample_num is None:
-        print("'subsample_num' not provided. Automatically subsample to the minimum number of subjects in the two conditions.")
-        min_num = dinfo[cond_col].value_counts().min()
-        subsample_num = str(min_num) + ':' + str(min_num)
-
-    print("Donor subsampling: ", subsample_num)
-    pos_donor_num = int(subsample_num.split(':')[0])
-    neg_donor_num = int(subsample_num.split(':')[1])
-    if sex_col is None:
-        if mode == 'random':
-            sel_pos = dinfo[dinfo[cond_col]==pos_cond].sample(n=pos_donor_num).index
-            sel_neg = dinfo[dinfo[cond_col]==neg_cond].sample(n=neg_donor_num).index
-        elif mode == 'top':
-            sel_pos = dinfo[dinfo[cond_col]==pos_cond].sort_values(by='cell_num', ascending=False)[:pos_donor_num].index
-            sel_neg = dinfo[dinfo[cond_col]==neg_cond].sort_values(by='cell_num', ascending=False)[:neg_donor_num].index
-        chosen_donors = np.concatenate((sel_pos, sel_neg))
-    else:
-        pos_hf_num = pos_donor_num // 2
-        neg_hf_num = neg_donor_num // 2
-        df = dinfo.groupby([cond_col, sex_col]).size().unstack()
-        female = df.columns[0] # we ignored a strict correspondence here
-        male = df.columns[1]
-        if df.loc[pos_cond].min() >= pos_hf_num:
-            posm_num = pos_hf_num
-            posfm_num = pos_hf_num
-        else:
-            posm_num = df.loc[pos_cond, male]
-            posfm_num = pos_donor_num - posm_num
-        if df.loc[neg_cond].min() >= neg_hf_num:
-            negm_num = neg_hf_num
-            negfm_num = neg_hf_num
-        else:
-            negm_num = df.loc[neg_cond, male]
-            negfm_num = neg_donor_num - negm_num
-        
-        if mode == 'random':
-            pos_m_donors = dinfo[((dinfo[cond_col]==pos_cond)) & (dinfo[sex_col]==male)].sample(n=posm_num).index
-            pos_fm_donors = dinfo[((dinfo[cond_col]==pos_cond)) & (dinfo[sex_col]==female)].sample(n=posfm_num).index
-            neg_m_donors = dinfo[((dinfo[cond_col]==neg_cond)) & (dinfo[sex_col]==male)].sample(n=negm_num).index
-            neg_fm_donors = dinfo[((dinfo[cond_col]==neg_cond)) & (dinfo[sex_col]==female)].sample(n=negfm_num).index
-        elif mode == 'top':
-            pos_m_donors = dinfo[((dinfo[cond_col]==pos_cond)) & (dinfo[sex_col]==male)].sort_values(by='cell_num', ascending=True)[:posm_num].index
-            pos_fm_donors = dinfo[((dinfo[cond_col]==pos_cond)) & (dinfo[sex_col]==female)].sort_values(by='cell_num', ascending=True)[:posfm_num].index
-            neg_m_donors = dinfo[((dinfo[cond_col]==neg_cond)) & (dinfo[sex_col]==male)].sort_values(by='cell_num', ascending=True)[:negm_num].index
-            neg_fm_donors = dinfo[((dinfo[cond_col]==neg_cond)) & (dinfo[sex_col]==female)].sort_values(by='cell_num', ascending=True)[:negfm_num].index
-        chosen_donors = np.concatenate((pos_m_donors, pos_fm_donors, neg_m_donors, neg_fm_donors))
-    adata = adata[adata.obs[subid_col].isin(chosen_donors)]
-    print("After donor subsampling:")
-    dinfo = subject_info(
-        obs=adata.obs,
-        subid_col=subid_col,
-        columns=[cond_col, sex_col] if sex_col is not None else [cond_col])
-    print(dinfo.groupby([cond_col, sex_col]).size().unstack() if sex_col is not None else dinfo[cond_col].value_counts())
-
-    # remove graph connectivity, if it was in original adata. Otherwise, it will cause error
-    if 'neighbors' in adata.uns.keys():
-        del adata.uns['neighbors']
-    if 'connectivities' in adata.obsp.keys():
-        del adata.obsp['connectivities']
-
-    return adata
-
-from .graph import build_graph
-def align_psychad_gene(adata: anndata.AnnData,):
-    r"""
-    Take the intersection of adata.var_names and PsychAD genes, and reorder adata.var_names to match the order of PsychAD genes.
-
-    Returns:
-        AnnData: AnnData object with genes aligned to PsychAD genes.
-    """
-    if 'connectivities' not in adata.obsp.keys():
-        print("No graph found in adata. Building graph using PCA...")
-        build_graph(adata, run_umap=False)
-
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_dir, "PsychAD_hvg_3401.csv")
-    psychad_genes = pd.read_csv(file_path, index_col=0)
-
-    adata_ori = adata.copy()
-    ovlp_genes = adata.var_names.intersection(psychad_genes.index)
-    rest_genes = psychad_genes.index.difference(ovlp_genes)
-    rest_genes_var = pd.DataFrame(index=rest_genes, columns=['gene'], data=rest_genes)
-    adata = anndata.AnnData(
-        X = np.hstack([adata.X, np.zeros((adata.shape[0], rest_genes.shape[0]))]),
-        obs = adata.obs,
-        var = pd.concat([adata.var, rest_genes_var]),
-    )
-    adata = adata[:, psychad_genes.index]
-    if len(adata_ori.uns) > 0:
-        adata.uns = adata_ori.uns
-    if len(adata_ori.obsm) > 0:
-        adata.obsm = adata_ori.obsm
-    if len(adata_ori.obsp) > 0:
-        adata.obsp = adata_ori.obsp
-    return adata
