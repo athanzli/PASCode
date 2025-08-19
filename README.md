@@ -134,14 +134,17 @@ import scanpy as sc
 adata = sc.read_h5ad('./data/synth_demo_2v6_sparse.h5ad')
 print(adata)
 ```
+Example output
 ```
 AnnData object with n_obs × n_vars = 11674 × 2000
     obs: 'celltype', 'phenotype', 'subject_id'
 ```
+Take a look at `adata.X`
 ```python
 adata.X = adata.X.toarray()
 print(adata.X)
 ```
+Example output
 ```
 [[0.        0.        0.        ... 0.        1.1308908 0.       ]
  [0.        0.        0.        ... 0.        0.        0.       ]
@@ -151,10 +154,12 @@ print(adata.X)
  [2.4369774 0.        0.        ... 2.4369774 0.        0.       ]
  [0.        0.        0.        ... 0.        0.        0.       ]]
 ```
+Take a look at `adata.obs`
 ```python
 import anndata
 print(adata.obs)
 ```
+Example output
 ```
                     celltype phenotype subject_id
 TAG                                              
@@ -190,6 +195,7 @@ dinfo = PASCode.utils.subject_info(
 )
 print(dinfo)
 ```
+Example output
 ```
        Sex Age  cell_num
 43    Male  81      1415
@@ -244,6 +250,7 @@ adata = PASCode.utils.subsample_donors(
     sex_col=None, # Specify the column name for sex in adata.obs to account for sex balance during subsampling. Default: None.
 )
 ```
+Example output
 ```
 Before donor subsampling:
 phenotype
@@ -271,6 +278,7 @@ adata.obs['aggreg_label'] = PASCode.da.agglabel(
     da_methods=['milo','meld','daseq'] # recommended/default combination that yields high accuracy
 )
 ```
+Example output
 ```
 ============================= DA and RRA... =============================
 'use_rep' not found in adata.obsm. Computing PCA from adata.X to use as rep for cell-cell graph...
@@ -363,6 +371,7 @@ model = PASCode.model.train_model(
     device='cuda:0' # NOTE change accordingly
 )
 ```
+Example output
 ```
 No graph found in `adata.obsp`'s `connectivities`. Building graph from scratch...
 Scaling data...
