@@ -425,4 +425,4 @@ PASCode running time can vary across systems and data scales.
 
 ## Reference
 
-He, C., Li, A.Z., Hanthanan Arachchilage, K. et al. AI-based characterization of Alzheimer’s disease phenotypes from population-scale single-cell data. *Nat Med* (2026). https://doi.org/10.1038/s41591-025-04128-1
+He, C., Li, A.Z., Hanthanan Arachchilage, K. et al. AI-based characterization of Alzheimer’s disease phenotypes from population-scale single-cell data. *Nature Medicine* (2026). https://doi.org/10.1038/s41591-025-04128-1
