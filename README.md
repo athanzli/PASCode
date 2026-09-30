@@ -1,7 +1,7 @@
 # Phenotype Associated Single Cell encoder (PASCode)
 
 <!-- Badges: keep the set small and useful -->
-[![medRxiv](https://img.shields.io/badge/medRxiv-10.1101%2F2024.11.01.24316586-b31b1b)](https://www.medrxiv.org/content/10.1101/2024.11.01.24316586v1)
+[![Nature Medicine](https://img.shields.io/badge/Nature%20Medicine-10.1038%2Fs41591--025--04128--1-b31b1b)](https://www.nature.com/articles/s41591-025-04128-1)
 [![Python 3.10](https://img.shields.io/badge/Python-3.10.12-blue?logo=python)](#system-requirements-and-dependencies)
 [![OS](https://img.shields.io/badge/OS-Linux%20%7C%20Windows-informational)](#system-requirements-and-dependencies)
 [![CUDA 12.1](https://img.shields.io/badge/CUDA-12.1-76b900?logo=nvidia)](#installation)
@@ -425,4 +425,4 @@ PASCode running time can vary across systems and data scales.
 
 ## Reference
 
-Chenfeng He*, Athan Z. Li*, Kalpana Hanthanan Arachchilage*, Chirag Gupta*, Xiang Huang, Xinyu Zhao, PsychAD Consortium, Kiran Girdhar, Georgios Voloudakis, Gabriel E. Hoffman, Jaroslav Bendl, John F. Fullard, Donghoon Lee, Panos Roussos†, Daifeng Wang†. *Phenotype Scoring of Population Scale Single-Cell Data Dissects Alzheimer's Disease Complexity*. doi: https://doi.org/10.1101/2024.11.01.24316586.
+He, C., Li, A.Z., Hanthanan Arachchilage, K. et al. AI-based characterization of Alzheimer’s disease phenotypes from population-scale single-cell data. *Nat Med* (2026). https://doi.org/10.1038/s41591-025-04128-1
